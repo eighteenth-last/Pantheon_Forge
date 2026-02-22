@@ -4,15 +4,42 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f6bc2748-d539-4e1b-86c4-1a85e526a1c4" name="更改" comment="" />
+    <list default="true" id="f6bc2748-d539-4e1b-86c4-1a85e526a1c4" name="更改" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/agent/agent-core.ts" beforeDir="false" afterPath="$PROJECT_DIR$/agent/agent-core.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/agent/model-router.ts" beforeDir="false" afterPath="$PROJECT_DIR$/agent/model-router.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/electron/main.ts" beforeDir="false" afterPath="$PROJECT_DIR$/electron/main.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/electron/preload.ts" beforeDir="false" afterPath="$PROJECT_DIR$/electron/preload.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/claude-adapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/models/claude-adapter.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/gemini-adapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/models/gemini-adapter.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/openai-adapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/models/openai-adapter.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/App.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/App.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/ChatPanel.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/ChatPanel.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/EditorPanel.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/EditorPanel.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/FileExplorer.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/FileExplorer.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/FileTreeNode.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/FileTreeNode.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/ResizableLayout.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/ResizableLayout.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/SettingsPage.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/SettingsPage.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/TitleBar.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/TitleBar.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/WelcomePage.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/WelcomePage.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/env.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/env.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/stores/project.ts" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/stores/project.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/style.css" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/style.css" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 3
-}]]></component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 3
+}</component>
   <component name="ProjectId" id="39yQeuDysIdCYEFiuyWmLuS9LLK" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -20,9 +47,12 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "JavaScript 调试.127.0.0.1:55180.executor": "Debug",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "main",
     "ignore.virus.scanning.warn.message": "true",
     "last_opened_file_path": "R:/Code_Repository/Pantheon_Forge",
     "node.js.detected.package.eslint": "true",
@@ -34,6 +64,16 @@
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
+  <component name="RunManager">
+    <configuration name="127.0.0.1:55180" type="JavascriptDebugType" temporary="true" nameIsGenerated="true" uri="http://127.0.0.1:55180">
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="JavaScript 调试.127.0.0.1:55180" />
+      </list>
+    </recent_temporary>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -49,10 +89,22 @@
       <option name="presentableId" value="Default" />
       <updated>1771665930241</updated>
       <workItem from="1771665931686" duration="9504000" />
+      <workItem from="1771727811875" duration="13464000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>

@@ -125,6 +125,30 @@ function processCodeBlocks(container: HTMLElement) {
   })
 }
 
+// 模型图标映射
+function modelIcon(type: string): string {
+  switch (type) {
+    case 'claude': return 'fa-solid fa-c'
+    case 'gemini': return 'fa-solid fa-g'
+    case 'glm': return 'fa-solid fa-z'
+    case 'deepseek': return 'fa-solid fa-d'
+    case 'minimax': return 'fa-solid fa-m'
+    case 'openai-compatible': return 'fa-solid fa-robot'
+    default: return 'fa-solid fa-robot'
+  }
+}
+function modelColor(type: string): string {
+  switch (type) {
+    case 'claude': return 'text-orange-400'
+    case 'gemini': return 'text-blue-400'
+    case 'glm': return 'text-blue-500'
+    case 'deepseek': return 'text-cyan-400'
+    case 'minimax': return 'text-purple-400'
+    case 'openai-compatible': return 'text-green-400'
+    default: return 'text-[#a1a1aa]'
+  }
+}
+
 // 工具图标映射
 function toolIcon(name: string): string {
   switch (name) {
@@ -313,10 +337,9 @@ watch(
                 :class="model.id === chat.selectedModelId ? 'text-white bg-[#3b82f6]/15' : 'text-[#a1a1aa] hover:bg-[#3b82f6] hover:text-white'"
                 @click="selectModel(model.id!)"
               >
-                <i v-if="model.id === chat.selectedModelId" class="fa-solid fa-check text-[10px] text-[#3b82f6] w-3"></i>
-                <span v-else class="w-3"></span>
-                <span>{{ model.name }}</span>
-                <span class="text-[9px] text-[#52525b] ml-auto">{{ model.model_name }}</span>
+                <i :class="[modelIcon(model.type), modelColor(model.type)]" class="text-[12px] w-4 text-center shrink-0"></i>
+                <span class="truncate">{{ model.name }}</span>
+                <span class="text-[9px] text-[#52525b] ml-auto shrink-0 max-w-[80px] truncate">{{ model.model_name }}</span>
               </div>
               <div class="border-t border-[#3e3e42] mt-1 pt-1">
                 <div class="flex items-center gap-2 px-3 py-2 text-xs text-[#a1a1aa] hover:bg-[#3b82f6] hover:text-white cursor-pointer transition-colors"

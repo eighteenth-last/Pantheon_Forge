@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { useSettingsStore } from '../stores/settings'
+import logo from '../assets/logo.svg'
 
 const project = useProjectStore()
 const settings = useSettingsStore()
@@ -58,7 +59,7 @@ function addToRecent(path: string) {
     <!-- Logo -->
     <div class="flex flex-col items-center mb-10">
       <div class="flex items-center gap-3 text-4xl font-bold text-white mb-2">
-        <i class="fa-solid fa-code-branch text-blue-500"></i>
+        <img :src="logo" class="w-16 h-16" />
         PANTHEON FORGE
       </div>
       <p class="text-[#a1a1aa] text-sm mt-2">编辑代码，构建未来</p>

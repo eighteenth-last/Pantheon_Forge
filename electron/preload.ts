@@ -37,6 +37,10 @@ const api = {
     readDir: (path: string) => ipcRenderer.invoke('fs:readDir', path),
     readFile: (path: string) => ipcRenderer.invoke('fs:readFile', path),
     writeFile: (path: string, content: string) => ipcRenderer.invoke('fs:writeFile', path, content),
+    rename: (oldPath: string, newPath: string) => ipcRenderer.invoke('fs:rename', oldPath, newPath),
+    delete: (targetPath: string) => ipcRenderer.invoke('fs:delete', targetPath),
+    copyFile: (src: string, dest: string) => ipcRenderer.invoke('fs:copyFile', src, dest),
+    showInExplorer: (path: string) => ipcRenderer.invoke('fs:showInExplorer', path),
     watch: (path: string) => ipcRenderer.invoke('fs:watch', path),
     unwatch: () => ipcRenderer.invoke('fs:unwatch'),
     onChanged: (cb: (data: any) => void) => {
@@ -83,6 +87,52 @@ const api = {
   // Dialog
   dialog: {
     openFolder: () => ipcRenderer.invoke('dialog:openFolder')
+  },
+
+  // File Server (内置浏览器)
+  fileServer: {
+    getUrl: (filePath: string) => ipcRenderer.invoke('fileServer:getUrl', filePath)
+  },
+
+  // Git
+  git: {
+    isRepo: (cwd: string) => ipcRenderer.invoke('git:isRepo', cwd),
+    init: (cwd: string) => ipcRenderer.invoke('git:init', cwd),
+    status: (cwd: string) => ipcRenderer.invoke('git:status', cwd),
+    branch: (cwd: string) => ipcRenderer.invoke('git:branch', cwd),
+    add: (cwd: string, files: string[]) => ipcRenderer.invoke('git:add', cwd, files),
+    unstage: (cwd: string, files: string[]) => ipcRenderer.invoke('git:unstage', cwd, files),
+    commit: (cwd: string, message: string) => ipcRenderer.invoke('git:commit', cwd, message),
+    diff: (cwd: string, file: string) => ipcRenderer.invoke('git:diff', cwd, file),
+    discard: (cwd: string, file: string) => ipcRenderer.invoke('git:discard', cwd, file),
+    log: (cwd: string, count?: number) => ipcRenderer.invoke('git:log', cwd, count),
+  },
+
+  // Search
+  search: {
+    files: (cwd: string, query: string, options: any) => ipcRenderer.invoke('search:files', cwd, query, options),
+    replace: (cwd: string, filePath: string, query: string, replacement: string, options: any) =>
+      ipcRenderer.invoke('search:replace', cwd, filePath, query, replacement, options),
+    replaceAll: (cwd: string, query: string, replacement: string, options: any, files: string[]) =>
+      ipcRenderer.invoke('search:replaceAll', cwd, query, replacement, options, files),
+  },
+
+  // Extensions
+  ext: {
+    getDir: () => ipcRenderer.invoke('ext:getDir'),
+    list: () => ipcRenderer.invoke('ext:list'),
+    install: (sourcePath: string) => ipcRenderer.invoke('ext:install', sourcePath),
+    uninstall: (dirName: string) => ipcRenderer.invoke('ext:uninstall', dirName),
+    readFile: (dirName: string, filePath: string) => ipcRenderer.invoke('ext:readFile', dirName, filePath),
+    selectFolder: () => ipcRenderer.invoke('ext:selectFolder'),
+    loadTheme: (dirName: string, themeFile: string) => ipcRenderer.invoke('ext:loadTheme', dirName, themeFile),
+  },
+
+  // Window
+  window: {
+    minimize: () => ipcRenderer.send('window:minimize'),
+    maximize: () => ipcRenderer.send('window:maximize'),
+    close: () => ipcRenderer.send('window:close')
   }
 }
 

@@ -8,9 +8,10 @@ import type { ModelAdapter, Message, ModelConfig, ModelChunk, ToolDefinition } f
 export class OpenAICompatibleAdapter implements ModelAdapter {
   async *stream(messages: Message[], config: ModelConfig, tools?: ToolDefinition[]): AsyncGenerator<ModelChunk> {
     const base = config.baseUrl.replace(/\/$/, '')
-    const url = base.endsWith('/v1')
-      ? `${base}/chat/completions`
-      : `${base}/v1/chat/completions`
+    // 如果已包含端点路径则直接用，否则追加 /chat/completions
+    const url = (base.endsWith('/chat/completions') || base.endsWith('/completions'))
+      ? base
+      : `${base}/chat/completions`
 
     // 构建消息体 — 保留 tool_call_id 和 tool_calls
     const apiMessages = messages.map(m => {
@@ -34,15 +35,21 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
         function: { name: t.name, description: t.description, parameters: t.parameters }
       }))
     }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`
-      },
-      body: JSON.stringify(body)
-    })
+    let response: Response
+    try {
+      console.log('[OpenAI] Requesting:', url)
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`
+        },
+        body: JSON.stringify(body)
+      })
+    } catch (fetchErr: any) {
+      yield { type: 'error', error: `网络请求失败: ${fetchErr.message}` }
+      return
+    }
 
     if (!response.ok) {
       const errText = await response.text()

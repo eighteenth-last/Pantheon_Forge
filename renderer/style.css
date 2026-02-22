@@ -36,3 +36,11 @@ body {
   flex-shrink: 0;
 }
 .resizer-h:hover, .resizer-h.active { background: #3b82f6; }
+
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}

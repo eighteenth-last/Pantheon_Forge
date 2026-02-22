@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useProjectStore } from '../stores/project'
+import logo from '../assets/logo.svg'
 
 const settings = useSettingsStore()
 const project = useProjectStore()
@@ -84,61 +85,54 @@ async function runActiveFile() {
   // We'll write the command + Enter to the terminal via a custom event
   window.dispatchEvent(new CustomEvent('terminal:run-command', { detail: cmd }))
 }
+
+function closeWindow() { window.api?.window.close() }
+function minimizeWindow() { window.api?.window.minimize() }
+function maximizeWindow() { window.api?.window.maximize() }
 </script>
 
 <template>
   <header class="h-9 bg-[#18181c] border-b border-[#2e2e32] flex items-center px-4 justify-between select-none shrink-0 text-xs app-drag-region relative z-40">
     <div class="flex items-center gap-4">
-      <div class="font-bold text-white flex items-center gap-2 mr-4">
-        <i class="fa-solid fa-code-branch text-blue-500"></i>
-        Pantheon Forge
+      <div class="flex items-center gap-2 mr-4">
+        <img :src="logo" class="w-5 h-5" />
       </div>
       <div class="flex gap-1 text-[#a1a1aa]">
         <div v-for="item in ['文件', '编辑', '选择', '查看', '转到', '运行', '终端', '帮助']" :key="item" class="relative">
           <span
             class="px-2 py-1 rounded hover:bg-[#27272a] hover:text-white cursor-pointer no-drag transition-colors"
             :class="{ 'bg-[#27272a] text-white': openMenu === item }"
-            @click="menuMap[item] ? toggleMenu(item) : (item === '文件' ? openFolder() : null)"
-            @mouseenter="openMenu && menuMap[item] ? (openMenu = item) : null"
-          >{{ item }}</span>
-
-          <!-- Dropdown -->
-          <div
-            v-if="openMenu === item && menuMap[item]"
-            class="absolute top-full left-0 mt-0.5 bg-[#27272a] border border-[#3e3e42] rounded-md shadow-xl py-1 min-w-[220px] z-50"
+            @click="toggleMenu(item)"
           >
-            <template v-for="(mi, idx) in menuMap[item]" :key="idx">
-              <div v-if="mi.divider" class="border-t border-[#3e3e42] my-1"></div>
+            {{ item }}
+          </span>
+          
+          <!-- Dropdown Menu -->
+          <div v-if="openMenu === item && menuMap[item]" class="absolute top-full left-0 mt-1 w-56 bg-[#1f1f23] border border-[#2e2e32] rounded-md shadow-xl py-1 z-50">
+            <template v-for="(menuItem, index) in menuMap[item]" :key="index">
+              <div v-if="menuItem.divider" class="h-px bg-[#2e2e32] my-1 mx-2"></div>
               <div
                 v-else
-                class="flex items-center justify-between px-3 py-1.5 text-xs cursor-pointer transition-colors"
-                :class="mi.disabled ? 'text-[#52525b] cursor-not-allowed' : 'text-[#e4e4e7] hover:bg-[#3b82f6] hover:text-white'"
-                @click="!mi.disabled && mi.action ? mi.action() : null"
+                class="px-3 py-1.5 hover:bg-[#007acc] hover:text-white flex justify-between items-center cursor-pointer group"
+                :class="{ 'opacity-50 cursor-not-allowed': menuItem.disabled }"
+                @click="!menuItem.disabled && menuItem.action && menuItem.action()"
               >
-                <span>{{ mi.label }}</span>
-                <span v-if="mi.shortcut" class="text-[10px] text-[#71717a] ml-6">{{ mi.shortcut }}</span>
+                <span>{{ menuItem.label }}</span>
+                <span class="text-[10px] text-[#71717a] group-hover:text-white/80">{{ menuItem.shortcut }}</span>
               </div>
             </template>
           </div>
         </div>
       </div>
     </div>
-    <div class="flex items-center gap-3 text-[#a1a1aa]">
-      <div class="flex items-center gap-2 border-r border-[#2e2e32] pr-3 mr-1">
-        <i class="fa-solid fa-play hover:text-green-400 cursor-pointer no-drag" title="运行项目"></i>
-        <i class="fa-solid fa-bug hover:text-red-400 cursor-pointer no-drag" title="调试"></i>
-      </div>
-      <i class="fa-solid fa-gear hover:text-white cursor-pointer no-drag" title="设置"
-         :class="{ 'text-white': settings.showSettings }"
-         @click="settings.showSettings = !settings.showSettings"></i>
+    
+    <!-- Window Controls -->
+    <div class="flex gap-2 no-drag">
+      <div class="w-3 h-3 rounded-full bg-[#ef4444] hover:bg-[#dc2626] cursor-pointer" @click="closeWindow"></div>
+      <div class="w-3 h-3 rounded-full bg-[#eab308] hover:bg-[#ca8a04] cursor-pointer" @click="minimizeWindow"></div>
+      <div class="w-3 h-3 rounded-full bg-[#22c55e] hover:bg-[#16a34a] cursor-pointer" @click="maximizeWindow"></div>
     </div>
-
-    <!-- Click-away overlay to close menu -->
-    <div v-if="openMenu" class="fixed inset-0 z-[-1]" @click="closeMenu"></div>
   </header>
+  
+  <div v-if="openMenu" class="fixed inset-0 z-30" @click="closeMenu"></div>
 </template>
-
-<style scoped>
-.app-drag-region { -webkit-app-region: drag; }
-.no-drag { -webkit-app-region: no-drag; }
-</style>

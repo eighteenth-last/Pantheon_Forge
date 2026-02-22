@@ -15,7 +15,7 @@ import type { Database } from '../database/db'
 
 const MAX_STEPS = 50
 
-const SYSTEM_PROMPT = `你是 Pantheon Forge 的 AI 编程助手。你可以帮助用户编写、修改和理解代码。
+const SYSTEM_PROMPT = `你是 Pantheon Forge 的 AI 编程助手。你的名字是 Pantheon Forge 助手，不要使用其他名字自称。你可以帮助用户编写、修改和理解代码。
 
 你有以下工具可以使用:
 - read_file: 读取项目文件

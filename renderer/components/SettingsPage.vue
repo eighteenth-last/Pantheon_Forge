@@ -37,10 +37,11 @@ const presets = [
   { label: 'ChatGPT', type: 'openai-compatible' as const, url: 'https://api.openai.com', model: 'gpt-4o' },
   { label: '千问 (Qwen)', type: 'openai-compatible' as const, url: 'https://dashscope.aliyuncs.com/compatible-mode', model: 'qwen-plus' },
   { label: 'Kimi', type: 'openai-compatible' as const, url: 'https://api.moonshot.cn', model: 'moonshot-v1-8k' },
-  { label: 'GLM', type: 'openai-compatible' as const, url: 'https://open.bigmodel.cn/api/paas', model: 'glm-4' },
+  { label: 'GLM', type: 'glm' as const, url: 'https://open.bigmodel.cn/api/paas', model: 'glm-4' },
   { label: 'Claude', type: 'claude' as const, url: 'https://api.anthropic.com', model: 'claude-sonnet-4-20250514' },
   { label: 'Gemini', type: 'gemini' as const, url: 'https://generativelanguage.googleapis.com', model: 'gemini-2.5-pro' },
-  { label: 'DeepSeek', type: 'openai-compatible' as const, url: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  { label: 'DeepSeek', type: 'deepseek' as const, url: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  { label: 'MiniMax', type: 'minimax' as const, url: 'https://api.minimax.chat/v1', model: 'MiniMax-M1' },
   { label: '豆包 (Doubao)', type: 'openai-compatible' as const, url: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-pro-32k' },
 ]
 
@@ -310,10 +311,10 @@ const shortcuts = [
             </div>
           </div>
 
-          <!-- Edit form -->
-          <div v-if="isEditing" class="settings-group">
-            <h3 class="settings-group-title">{{ editingId ? '编辑模型' : '添加模型' }}</h3>
-            <div class="bg-[#1a1a1e] rounded-lg p-4 border border-[#2e2e32] space-y-3 mt-2">
+          <!-- 新增模型表单（非编辑已有模型时） -->
+          <div v-if="isEditing && !editingId" class="settings-group">
+            <h3 class="settings-group-title">添加模型</h3>
+            <div class="bg-[#1a1a1e] rounded-lg p-4 border border-[#3b82f6]/30 space-y-3 mt-2">
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="text-[11px] text-[#71717a] block mb-1">名称</label>
@@ -325,6 +326,9 @@ const shortcuts = [
                     <option value="openai-compatible">OpenAI 兼容</option>
                     <option value="claude">Claude</option>
                     <option value="gemini">Gemini</option>
+                    <option value="glm">GLM (智谱)</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="minimax">MiniMax</option>
                   </select>
                 </div>
                 <div class="col-span-2">
@@ -354,36 +358,74 @@ const shortcuts = [
               暂无模型配置，请使用上方快速添加
             </div>
             <div v-else class="space-y-1 mt-2">
-              <div
-                v-for="model in settings.models" :key="model.id"
-                class="flex items-center justify-between px-4 py-3 rounded-lg border transition-colors group"
-                :class="model.is_active ? 'border-[#3b82f6]/30 bg-[#3b82f6]/5' : 'border-[#2e2e32] hover:border-[#3e3e42]'"
-              >
-                <div class="flex items-center gap-3 flex-1 min-w-0">
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span class="text-[13px] text-white">{{ model.name }}</span>
-                      <span class="text-[10px] text-[#52525b] bg-[#27272a] px-1.5 py-0.5 rounded">{{ model.type }}</span>
-                    </div>
-                    <div class="text-[11px] text-[#52525b] mt-0.5 truncate">
-                      {{ model.model_name }} · {{ model.base_url }}
-                    </div>
-                    <div class="text-[11px] text-[#52525b] mt-0.5 flex items-center gap-1">
-                      <span>Key: {{ showApiKey[model.id!] ? model.api_key : maskKey(model.api_key) }}</span>
-                      <i
-                        :class="showApiKey[model.id!] ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"
-                        class="cursor-pointer text-[10px] hover:text-[#a1a1aa]"
-                        @click="showApiKey[model.id!] = !showApiKey[model.id!]"
-                      ></i>
+              <template v-for="model in settings.models" :key="model.id">
+                <div
+                  class="flex items-center justify-between px-4 py-3 rounded-lg border transition-colors group"
+                  :class="model.is_active ? 'border-[#3b82f6]/30 bg-[#3b82f6]/5' : 'border-[#2e2e32] hover:border-[#3e3e42]'"
+                >
+                  <div class="flex items-center gap-3 flex-1 min-w-0">
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="text-[13px] text-white">{{ model.name }}</span>
+                        <span class="text-[10px] text-[#52525b] bg-[#27272a] px-1.5 py-0.5 rounded">{{ model.type }}</span>
+                      </div>
+                      <div class="text-[11px] text-[#52525b] mt-0.5 truncate">
+                        {{ model.model_name }} · {{ model.base_url }}
+                      </div>
+                      <div class="text-[11px] text-[#52525b] mt-0.5 flex items-center gap-1">
+                        <span>Key: {{ showApiKey[model.id!] ? model.api_key : maskKey(model.api_key) }}</span>
+                        <i
+                          :class="showApiKey[model.id!] ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"
+                          class="cursor-pointer text-[10px] hover:text-[#a1a1aa]"
+                          @click="showApiKey[model.id!] = !showApiKey[model.id!]"
+                        ></i>
+                      </div>
                     </div>
                   </div>
+                  <div class="flex items-center gap-3 shrink-0 ml-4">
+                    <i class="fa-solid fa-pen text-[11px] text-[#52525b] hover:text-white cursor-pointer" @click="editModel(model)"></i>
+                    <i class="fa-solid fa-trash text-[11px] text-[#52525b] hover:text-red-400 cursor-pointer" @click="removeModel(model.id!)"></i>
+                    <label class="toggle"><input type="checkbox" :checked="!!model.is_active" @change="toggleModelActive(model)" /><span class="toggle-slider"></span></label>
+                  </div>
                 </div>
-                <div class="flex items-center gap-3 shrink-0 ml-4">
-                  <i class="fa-solid fa-pen text-[11px] text-[#52525b] hover:text-white cursor-pointer" @click="editModel(model)"></i>
-                  <i class="fa-solid fa-trash text-[11px] text-[#52525b] hover:text-red-400 cursor-pointer" @click="removeModel(model.id!)"></i>
-                  <label class="toggle"><input type="checkbox" :checked="!!model.is_active" @change="toggleModelActive(model)" /><span class="toggle-slider"></span></label>
+
+                <!-- 内联编辑表单：在当前模型卡片下方展开 -->
+                <div v-if="isEditing && editingId === model.id" class="bg-[#1a1a1e] rounded-lg p-4 border border-[#3b82f6]/30 space-y-3 ml-2 mr-2 -mt-0.5">
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="text-[11px] text-[#71717a] block mb-1">名称</label>
+                      <input v-model="editingModel.name" class="setting-input w-full" placeholder="例如: GPT-4o" />
+                    </div>
+                    <div>
+                      <label class="text-[11px] text-[#71717a] block mb-1">类型</label>
+                      <select v-model="editingModel.type" class="setting-select w-full">
+                        <option value="openai-compatible">OpenAI 兼容</option>
+                        <option value="claude">Claude</option>
+                        <option value="gemini">Gemini</option>
+                        <option value="glm">GLM (智谱)</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="minimax">MiniMax</option>
+                      </select>
+                    </div>
+                    <div class="col-span-2">
+                      <label class="text-[11px] text-[#71717a] block mb-1">Base URL</label>
+                      <input v-model="editingModel.base_url" class="setting-input w-full" placeholder="https://api.openai.com" />
+                    </div>
+                    <div>
+                      <label class="text-[11px] text-[#71717a] block mb-1">模型名称</label>
+                      <input v-model="editingModel.model_name" class="setting-input w-full" placeholder="gpt-4o" />
+                    </div>
+                    <div>
+                      <label class="text-[11px] text-[#71717a] block mb-1">API Key</label>
+                      <input v-model="editingModel.api_key" type="password" class="setting-input w-full" placeholder="sk-..." />
+                    </div>
+                  </div>
+                  <div class="flex gap-2 pt-1">
+                    <button class="px-4 py-1.5 bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs rounded-md transition-colors" @click="saveModel">保存</button>
+                    <button class="px-4 py-1.5 bg-[#27272a] hover:bg-[#3f3f46] text-[#a1a1aa] text-xs rounded-md transition-colors" @click="isEditing = false; editingId = null">取消</button>
+                  </div>
                 </div>
-              </div>
+              </template>
             </div>
           </div>
         </div>

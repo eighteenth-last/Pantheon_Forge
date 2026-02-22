@@ -9,9 +9,10 @@ import type { ModelAdapter, Message, ModelConfig, ModelChunk, ToolDefinition } f
 export class ClaudeAdapter implements ModelAdapter {
   async *stream(messages: Message[], config: ModelConfig, tools?: ToolDefinition[]): AsyncGenerator<ModelChunk> {
     const base = config.baseUrl.replace(/\/$/, '')
-    const url = base.endsWith('/v1')
-      ? `${base}/messages`
-      : `${base}/v1/messages`
+    // 如果已包含端点路径则直接用，否则追加
+    const url = (base.endsWith('/chat/completions') || base.endsWith('/messages'))
+      ? base
+      : `${base}/chat/completions`
 
     const systemMsg = messages.find(m => m.role === 'system')?.content || ''
 
@@ -62,15 +63,23 @@ export class ClaudeAdapter implements ModelAdapter {
       }))
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': config.apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify(body)
-    })
+    let response: Response
+    try {
+      console.log('[Claude] Requesting:', url)
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': config.apiKey,
+          'Authorization': `Bearer ${config.apiKey}`,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify(body)
+      })
+    } catch (fetchErr: any) {
+      yield { type: 'error', error: `Claude 网络请求失败: ${fetchErr.message}` }
+      return
+    }
 
     if (!response.ok) {
       const errText = await response.text()
@@ -87,6 +96,7 @@ export class ClaudeAdapter implements ModelAdapter {
     let currentToolName = ''
     let currentToolArgs = ''
     let currentBlockType = ''
+    let detectedFormat: 'anthropic' | 'openai' | null = null
 
     while (true) {
       const { done, value } = await reader.read()
@@ -101,52 +111,92 @@ export class ClaudeAdapter implements ModelAdapter {
         if (!trimmed.startsWith('data: ')) continue
         const data = trimmed.slice(6)
 
+        // OpenAI 格式的结束标记
+        if (data === '[DONE]') {
+          if (currentToolName) {
+            try {
+              yield { type: 'tool_call', toolCall: { id: currentToolId, name: currentToolName, arguments: JSON.parse(currentToolArgs) } }
+            } catch {
+              yield { type: 'tool_call', toolCall: { id: currentToolId, name: currentToolName, arguments: { raw: currentToolArgs } } }
+            }
+          }
+          yield { type: 'done' }
+          return
+        }
+
         try {
           const event = JSON.parse(data)
 
-          switch (event.type) {
-            case 'content_block_start':
-              if (event.content_block?.type === 'tool_use') {
-                currentBlockType = 'tool_use'
-                currentToolId = event.content_block.id || ''
-                currentToolName = event.content_block.name
-                currentToolArgs = ''
-              } else if (event.content_block?.type === 'thinking') {
-                currentBlockType = 'thinking'
-              } else if (event.content_block?.type === 'text') {
-                currentBlockType = 'text'
-              }
-              break
-
-            case 'content_block_delta':
-              if (event.delta?.type === 'text_delta') {
-                yield { type: 'text', content: event.delta.text }
-              } else if (event.delta?.type === 'thinking_delta') {
-                yield { type: 'thinking', thinking: event.delta.thinking }
-              } else if (event.delta?.type === 'input_json_delta') {
-                currentToolArgs += event.delta.partial_json
-              }
-              break
-
-            case 'content_block_stop':
-              if (currentBlockType === 'tool_use' && currentToolName) {
-                try {
-                  yield { type: 'tool_call', toolCall: { id: currentToolId, name: currentToolName, arguments: JSON.parse(currentToolArgs) } }
-                } catch {
-                  yield { type: 'tool_call', toolCall: { id: currentToolId, name: currentToolName, arguments: { raw: currentToolArgs } } }
-                }
-                currentToolId = ''
-                currentToolName = ''
-                currentToolArgs = ''
-              }
-              currentBlockType = ''
-              break
-
-            case 'message_stop':
-              yield { type: 'done' }
-              return
+          // 自动检测格式：有 choices 字段 → OpenAI 格式，有 type 字段 → Anthropic 格式
+          if (!detectedFormat) {
+            if (event.choices) detectedFormat = 'openai'
+            else if (event.type) detectedFormat = 'anthropic'
           }
-        } catch { /* skip */ }
+
+          if (detectedFormat === 'openai') {
+            // ---- OpenAI 兼容格式解析 ----
+            const delta = event.choices?.[0]?.delta
+
+            if (delta?.reasoning_content) {
+              yield { type: 'thinking', thinking: delta.reasoning_content }
+            }
+
+            if (delta?.content) {
+              yield { type: 'text', content: delta.content }
+            }
+
+            if (delta?.tool_calls?.[0]) {
+              const tc = delta.tool_calls[0]
+              if (tc.id) currentToolId = tc.id
+              if (tc.function?.name) currentToolName = tc.function.name
+              if (tc.function?.arguments) currentToolArgs += tc.function.arguments
+            }
+          } else {
+            // ---- Anthropic 原生格式解析 ----
+            switch (event.type) {
+              case 'content_block_start':
+                if (event.content_block?.type === 'tool_use') {
+                  currentBlockType = 'tool_use'
+                  currentToolId = event.content_block.id || ''
+                  currentToolName = event.content_block.name
+                  currentToolArgs = ''
+                } else if (event.content_block?.type === 'thinking') {
+                  currentBlockType = 'thinking'
+                } else if (event.content_block?.type === 'text') {
+                  currentBlockType = 'text'
+                }
+                break
+
+              case 'content_block_delta':
+                if (event.delta?.type === 'text_delta') {
+                  yield { type: 'text', content: event.delta.text }
+                } else if (event.delta?.type === 'thinking_delta') {
+                  yield { type: 'thinking', thinking: event.delta.thinking }
+                } else if (event.delta?.type === 'input_json_delta') {
+                  currentToolArgs += event.delta.partial_json
+                }
+                break
+
+              case 'content_block_stop':
+                if (currentBlockType === 'tool_use' && currentToolName) {
+                  try {
+                    yield { type: 'tool_call', toolCall: { id: currentToolId, name: currentToolName, arguments: JSON.parse(currentToolArgs) } }
+                  } catch {
+                    yield { type: 'tool_call', toolCall: { id: currentToolId, name: currentToolName, arguments: { raw: currentToolArgs } } }
+                  }
+                  currentToolId = ''
+                  currentToolName = ''
+                  currentToolArgs = ''
+                }
+                currentBlockType = ''
+                break
+
+              case 'message_stop':
+                yield { type: 'done' }
+                return
+            }
+          }
+        } catch { /* skip malformed lines */ }
       }
     }
 

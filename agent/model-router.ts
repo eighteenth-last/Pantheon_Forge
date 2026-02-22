@@ -7,7 +7,10 @@ import type { Database, ModelRecord } from '../database/db'
 const adapters: Record<string, ModelAdapter> = {
   'openai-compatible': new OpenAICompatibleAdapter(),
   'claude': new ClaudeAdapter(),
-  'gemini': new GeminiAdapter()
+  'gemini': new GeminiAdapter(),
+  'glm': new OpenAICompatibleAdapter(),
+  'deepseek': new OpenAICompatibleAdapter(),
+  'minimax': new OpenAICompatibleAdapter()
 }
 
 export class ModelRouter {

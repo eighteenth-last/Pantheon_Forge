@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useProjectStore } from './stores/project'
 import { useChatStore } from './stores/chat'
 import { useSettingsStore } from './stores/settings'
@@ -16,7 +16,30 @@ const project = useProjectStore()
 const chat = useChatStore()
 const settings = useSettingsStore()
 
+// 工作区状态缓存
+interface WorkspaceState {
+  projectPath: string
+  openFiles: { path: string; name: string }[]
+  activeFilePath: string
+  terminalVisible: boolean
+  sidebarCollapsed: boolean
+}
+
+const WORKSPACE_KEY = 'pantheon-workspace'
+
+function saveWorkspace() {
+  const state: WorkspaceState = {
+    projectPath: project.projectPath,
+    openFiles: project.openFiles.map(f => ({ path: f.path, name: f.name })),
+    activeFilePath: project.activeFilePath,
+    terminalVisible: terminalVisible.value,
+    sidebarCollapsed: sidebarCollapsed.value,
+  }
+  localStorage.setItem(WORKSPACE_KEY, JSON.stringify(state))
+}
+
 const terminalVisible = ref(true)
+const sidebarCollapsed = ref(false)
 const terminalPanelRef = ref<InstanceType<typeof TerminalPanel>>()
 
 function toggleTerminal() { terminalVisible.value = !terminalVisible.value }
@@ -27,7 +50,40 @@ function killAllTerminals() { terminalPanelRef.value?.killAllTerminals() }
 onMounted(async () => {
   await settings.loadModels()
   await chat.loadModels()
+
+  // 恢复工作区状态
+  try {
+    const saved = localStorage.getItem(WORKSPACE_KEY)
+    if (saved) {
+      const state: WorkspaceState = JSON.parse(saved)
+      terminalVisible.value = state.terminalVisible ?? true
+      sidebarCollapsed.value = state.sidebarCollapsed ?? false
+
+      if (state.projectPath) {
+        await project.openProject(state.projectPath)
+
+        // 恢复打开的文件
+        for (const f of state.openFiles) {
+          try {
+            await project.openFile(f.path, f.name)
+          } catch { /* 文件可能已被删除，跳过 */ }
+        }
+
+        // 恢复激活的文件
+        if (state.activeFilePath) {
+          project.activeFilePath = state.activeFilePath
+        }
+      }
+    }
+  } catch { /* 恢复失败不影响使用 */ }
 })
+
+// 监听状态变化，自动保存工作区
+watch(
+  () => [project.projectPath, project.openFiles.length, project.activeFilePath, terminalVisible.value, sidebarCollapsed.value],
+  () => { saveWorkspace() },
+  { deep: true }
+)
 </script>
 
 <template>
@@ -47,7 +103,7 @@ onMounted(async () => {
     <SettingsPage v-else-if="settings.showSettings" />
 
     <!-- 已打开项目：工作区 -->
-    <ResizableLayout v-else :terminal-visible="terminalVisible" @update:terminal-visible="v => terminalVisible = v">
+    <ResizableLayout v-else :terminal-visible="terminalVisible" :sidebar-collapsed="sidebarCollapsed" @update:terminal-visible="v => terminalVisible = v">
       <template #left>
         <ChatPanel />
       </template>
@@ -58,7 +114,7 @@ onMounted(async () => {
         <TerminalPanel ref="terminalPanelRef" @close="terminalVisible = false" />
       </template>
       <template #right>
-        <FileExplorer />
+        <FileExplorer @update:collapsed="v => sidebarCollapsed = v" />
       </template>
     </ResizableLayout>
 

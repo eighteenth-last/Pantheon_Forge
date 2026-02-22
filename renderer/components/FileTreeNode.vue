@@ -14,13 +14,20 @@ const props = defineProps({
   depth: { type: Number, default: 0 },
   selectedPath: { type: String, default: '' },
   newInput: { type: String as PropType<'file' | 'folder' | null>, default: null },
-  newInputTarget: { type: String, default: '' }
+  newInputTarget: { type: String, default: '' },
+  renamingPath: { type: String, default: '' },
+  renameValue: { type: String, default: '' },
 })
 
 const emit = defineEmits<{
   (e: 'click', entry: FileEntry): void
+  (e: 'dblclick', entry: FileEntry): void
+  (e: 'contextmenu', entry: FileEntry, ev: MouseEvent): void
   (e: 'confirmNew', name: string): void
   (e: 'cancelNew'): void
+  (e: 'confirmRename'): void
+  (e: 'cancelRename'): void
+  (e: 'update:renameValue', val: string): void
 }>()
 
 function onNewKeydown(ev: KeyboardEvent) {
@@ -32,11 +39,21 @@ function onNewKeydown(ev: KeyboardEvent) {
   }
 }
 
+function onRenameKeydown(ev: KeyboardEvent) {
+  if (ev.key === 'Enter') emit('confirmRename')
+  else if (ev.key === 'Escape') emit('cancelRename')
+}
+
+function onRightClick(ev: MouseEvent) {
+  ev.preventDefault()
+  ev.stopPropagation()
+  emit('contextmenu', props.entry, ev)
+}
+
 function getIcon(entry: FileEntry): string {
   if (entry.isDirectory) return entry.expanded ? 'fa-solid fa-folder-open text-blue-500' : 'fa-solid fa-folder text-blue-400'
   const name = entry.name.toLowerCase()
   const ext = name.split('.').pop() || ''
-  // 特殊文件名
   if (name === 'dockerfile' || name.startsWith('dockerfile.')) return 'fa-brands fa-docker text-blue-400'
   if (name === 'makefile' || name === 'cmakelists.txt') return 'fa-solid fa-gears text-orange-400'
   if (name === '.gitignore' || name === '.gitattributes') return 'fa-brands fa-git-alt text-orange-400'
@@ -138,15 +155,17 @@ function getIcon(entry: FileEntry): string {
   <div>
     <!-- 节点行 -->
     <div
+      v-if="renamingPath !== entry.path"
       class="flex items-center gap-1 px-2 py-1 text-xs cursor-pointer transition-colors"
       :class="selectedPath === entry.path
         ? 'bg-[#094771] text-white'
         : 'text-[#a1a1aa] hover:bg-[#27272a] hover:text-white'"
       :style="{ paddingLeft: (depth * 12 + 8) + 'px' }"
-      @click="emit('click', entry)"
+      @click.stop="emit('click', entry)"
+      @dblclick.stop="emit('dblclick', entry)"
+      @contextmenu="onRightClick"
     >
-      <i
-        v-if="entry.isDirectory"
+      <i v-if="entry.isDirectory"
         :class="`text-[10px] w-4 text-center ${entry.expanded ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'}`"
       ></i>
       <span v-else class="w-4"></span>
@@ -154,9 +173,28 @@ function getIcon(entry: FileEntry): string {
       <span class="truncate">{{ entry.name }}</span>
     </div>
 
+    <!-- 重命名输入框 -->
+    <div
+      v-else
+      class="flex items-center gap-1 px-2 py-1"
+      :style="{ paddingLeft: (depth * 12 + 8) + 'px' }"
+    >
+      <i v-if="entry.isDirectory"
+        :class="`text-[10px] w-4 text-center ${entry.expanded ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'}`"
+      ></i>
+      <span v-else class="w-4"></span>
+      <i :class="`${getIcon(entry)} w-4 text-center`"></i>
+      <input
+        class="rename-input flex-1 bg-[#27272a] border border-blue-500/50 rounded px-2 py-0.5 text-xs text-white outline-none min-w-0"
+        :value="renameValue"
+        @input="emit('update:renameValue', ($event.target as HTMLInputElement).value)"
+        @keydown="onRenameKeydown"
+        @blur="emit('cancelRename')"
+      />
+    </div>
+
     <!-- 展开的目录内容 -->
     <template v-if="entry.isDirectory && entry.expanded && entry.children">
-      <!-- 新建输入框：当此目录是新建目标时，在子项最前面显示 -->
       <div v-if="newInput && newInputTarget === entry.path" class="flex items-center gap-1 px-2 py-1" :style="{ paddingLeft: ((depth + 1) * 12 + 8) + 'px' }">
         <span class="w-4"></span>
         <i :class="newInput === 'folder' ? 'fa-solid fa-folder text-blue-400' : 'fa-solid fa-file text-gray-400'" class="text-xs w-4 text-center"></i>
@@ -177,9 +215,16 @@ function getIcon(entry: FileEntry): string {
         :selected-path="selectedPath"
         :new-input="newInput"
         :new-input-target="newInputTarget"
+        :renaming-path="renamingPath"
+        :rename-value="renameValue"
         @click="(e: FileEntry) => emit('click', e)"
+        @dblclick="(e: FileEntry) => emit('dblclick', e)"
+        @contextmenu="(e: FileEntry, ev: MouseEvent) => emit('contextmenu', e, ev)"
         @confirm-new="(name: string) => emit('confirmNew', name)"
         @cancel-new="emit('cancelNew')"
+        @confirm-rename="emit('confirmRename')"
+        @cancel-rename="emit('cancelRename')"
+        @update:rename-value="(v: string) => emit('update:renameValue', v)"
       />
     </template>
   </div>

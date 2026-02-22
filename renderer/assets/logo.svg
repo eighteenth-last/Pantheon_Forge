@@ -1,0 +1,17 @@
+<svg width="160" height="160" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="apexGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6" />
+      <stop offset="100%" style="stop-color:#1E40AF" />
+    </linearGradient>
+  </defs>
+  <!-- Abstract Triangle (Temple Roof / Pyramid) -->
+  <path d="M50 20 L80 80 H20 Z" fill="none" stroke="url(#apexGrad)" stroke-width="4" stroke-linejoin="round"/>
+  <!-- Inner Core (Forge) -->
+  <circle cx="50" cy="55" r="8" fill="#60A5FA">
+    <animate attributeName="r" values="6;8;6" dur="3s" repeatCount="indefinite" />
+    <animate attributeName="opacity" values="0.6;1;0.6" dur="3s" repeatCount="indefinite" />
+  </circle>
+  <!-- Base Line (Platform) -->
+  <path d="M30 80 L70 80" stroke="#3B82F6" stroke-width="8" stroke-linecap="round"/>
+</svg>
