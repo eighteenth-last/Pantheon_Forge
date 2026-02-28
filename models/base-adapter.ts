@@ -1,7 +1,14 @@
+/** 多模态内容块 */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 /** 统一消息格式 */
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
+  /** 用户消息中附带的图片（base64 data URL） */
+  images?: string[]
   tool_call_id?: string
   /** assistant 消息中的工具调用（OpenAI 格式需要回传） */
   tool_calls?: {

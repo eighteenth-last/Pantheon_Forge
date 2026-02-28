@@ -4,30 +4,30 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f6bc2748-d539-4e1b-86c4-1a85e526a1c4" name="更改" comment="">
+    <list default="true" id="f6bc2748-d539-4e1b-86c4-1a85e526a1c4" name="更改" comment="第二次提交">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/agent/agent-core.ts" beforeDir="false" afterPath="$PROJECT_DIR$/agent/agent-core.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/agent/model-router.ts" beforeDir="false" afterPath="$PROJECT_DIR$/agent/model-router.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/agent/memory.ts" beforeDir="false" afterPath="$PROJECT_DIR$/agent/memory.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/agent/tool-executor.ts" beforeDir="false" afterPath="$PROJECT_DIR$/agent/tool-executor.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database/db.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database/db.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/electron/main.ts" beforeDir="false" afterPath="$PROJECT_DIR$/electron/main.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/electron/preload.ts" beforeDir="false" afterPath="$PROJECT_DIR$/electron/preload.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/base-adapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/models/base-adapter.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/claude-adapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/models/claude-adapter.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/gemini-adapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/models/gemini-adapter.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/openai-adapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/models/openai-adapter.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/renderer/App.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/App.vue" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/renderer/components/ChatPanel.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/ChatPanel.vue" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/renderer/components/EditorPanel.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/EditorPanel.vue" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/renderer/components/FileExplorer.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/FileExplorer.vue" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/renderer/components/FileTreeNode.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/FileTreeNode.vue" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/renderer/components/ResizableLayout.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/ResizableLayout.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/GitPanel.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/GitPanel.vue" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/renderer/components/SettingsPage.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/SettingsPage.vue" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/renderer/components/TitleBar.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/TitleBar.vue" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/renderer/components/WelcomePage.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/WelcomePage.vue" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/components/TerminalPanel.vue" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/components/TerminalPanel.vue" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/renderer/env.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/env.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/stores/chat.ts" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/stores/chat.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/stores/git.ts" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/stores/git.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/renderer/stores/project.ts" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/stores/project.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/renderer/style.css" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/style.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/renderer/stores/settings.ts" beforeDir="false" afterPath="$PROJECT_DIR$/renderer/stores/settings.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/vite.config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/vite.config.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/调用日志.md" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -37,6 +37,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;eighteenth-last&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/eighteenth-last/Pantheon_Forge.git&quot;,
+    &quot;accountId&quot;: &quot;8a8a9603-5721-4f3e-8512-04b8a0169480&quot;
+  }
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 3
 }</component>
@@ -45,25 +57,25 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "JavaScript 调试.127.0.0.1:55180.executor": "Debug",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
-    "ignore.virus.scanning.warn.message": "true",
-    "last_opened_file_path": "R:/Code_Repository/Pantheon_Forge",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "ts.external.directory.path": "R:\\Code_Repository\\Pantheon_Forge\\node_modules\\typescript\\lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;JavaScript 调试.127.0.0.1:55180.executor&quot;: &quot;Debug&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;R:/Code_Repository/Pantheon_Forge&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;R:\\Code_Repository\\Pantheon_Forge\\node_modules\\typescript\\lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager">
     <configuration name="127.0.0.1:55180" type="JavascriptDebugType" temporary="true" nameIsGenerated="true" uri="http://127.0.0.1:55180">
       <method v="2" />
@@ -90,7 +102,22 @@
       <updated>1771665930241</updated>
       <workItem from="1771665931686" duration="9504000" />
       <workItem from="1771727811875" duration="13464000" />
+      <workItem from="1771741843307" duration="103000" />
+      <workItem from="1771821761963" duration="2473000" />
+      <workItem from="1771838209683" duration="3936000" />
+      <workItem from="1771844296550" duration="4769000" />
+      <workItem from="1771899303070" duration="11138000" />
+      <workItem from="1772168945054" duration="2525000" />
     </task>
+    <task id="LOCAL-00001" summary="第二次提交">
+      <option name="closed" value="true" />
+      <created>1771741876857</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1771741876857</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -106,5 +133,9 @@
         </entry>
       </map>
     </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="第二次提交" />
+    <option name="LAST_COMMIT_MESSAGE" value="第二次提交" />
   </component>
 </project>

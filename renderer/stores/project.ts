@@ -12,7 +12,7 @@ export interface FileEntry {
 export const useProjectStore = defineStore('project', () => {
   const projectPath = ref('')
   const fileTree = ref<FileEntry[]>([])
-  const openFiles = ref<{ path: string; name: string; content: string; modified: boolean; preview: boolean; type?: 'code' | 'browser' }[]>([])
+  const openFiles = ref<{ path: string; name: string; content: string; modified: boolean; preview: boolean; type?: 'code' | 'browser' | 'diff'; diffOriginal?: string; diffLabel?: string }[]>([])
   const activeFilePath = ref('')
   const fileReloadTick = ref(0)
 
@@ -42,18 +42,49 @@ export const useProjectStore = defineStore('project', () => {
 
   async function refreshTree() {
     if (!projectPath.value) return
-    // 刷新根目录
-    await loadDirectory(projectPath.value, fileTree.value)
-    // 重新加载已展开的子目录
-    await refreshExpanded(fileTree.value)
+    // 增量刷新：对比差异，保留展开状态
+    await mergeDirectory(projectPath.value, fileTree.value)
   }
 
-  async function refreshExpanded(entries: FileEntry[]) {
-    for (const entry of entries) {
-      if (entry.isDirectory && entry.expanded && entry.children) {
-        await loadDirectory(entry.path, entry.children)
-        await refreshExpanded(entry.children)
+  /** 增量合并目录内容，保留已有节点的展开状态和子节点 */
+  async function mergeDirectory(dirPath: string, target: FileEntry[]) {
+    try {
+      const entries = await window.api.fs.readDir(dirPath)
+      const sorted = entries.sort((a: any, b: any) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+
+      // 建立旧条目的索引（按路径）
+      const oldMap = new Map<string, FileEntry>()
+      for (const entry of target) {
+        oldMap.set(entry.path, entry)
       }
+
+      // 构建新列表，复用已有节点
+      const newList: FileEntry[] = []
+      for (const entry of sorted) {
+        const existing = oldMap.get(entry.path)
+        if (existing) {
+          // 节点已存在：保留展开状态和子节点
+          existing.name = entry.name
+          existing.isDirectory = entry.isDirectory
+          newList.push(existing)
+          // 如果目录已展开，递归刷新子节点
+          if (existing.isDirectory && existing.expanded && existing.children) {
+            await mergeDirectory(existing.path, existing.children)
+          }
+        } else {
+          // 新节点
+          newList.push({ ...entry, children: entry.isDirectory ? [] : undefined, expanded: false })
+        }
+      }
+
+      // 替换数组内容
+      target.length = 0
+      target.push(...newList)
+    } catch (err) {
+      console.error('Failed to merge directory:', err)
     }
   }
 
@@ -161,13 +192,47 @@ export const useProjectStore = defineStore('project', () => {
   /** 切换回代码编辑模式 */
   function openAsCode(path: string) {
     const file = openFiles.value.find(f => f.path === path)
-    if (file && file.type === 'browser') {
+    if (file && (file.type === 'browser' || file.type === 'diff')) {
       file.type = 'code'
+      file.diffOriginal = undefined
+      file.diffLabel = undefined
     }
+  }
+
+  /** 在 diff 模式中打开文件 */
+  function openDiff(path: string, name: string, original: string, modified: string, label: string) {
+    const diffPath = `diff://${path}`
+    const existing = openFiles.value.find(f => f.path === diffPath)
+    if (existing) {
+      existing.content = modified
+      existing.diffOriginal = original
+      existing.diffLabel = label
+      existing.type = 'diff'
+      activeFilePath.value = diffPath
+      fileReloadTick.value++
+      return
+    }
+    // 关闭旧的 diff tab（只保留一个）
+    const oldDiffIdx = openFiles.value.findIndex(f => f.path.startsWith('diff://'))
+    if (oldDiffIdx !== -1) openFiles.value.splice(oldDiffIdx, 1)
+
+    openFiles.value.push({
+      path: diffPath,
+      name: `${name} (diff)`,
+      content: modified,
+      modified: false,
+      preview: false,
+      type: 'diff',
+      diffOriginal: original,
+      diffLabel: label,
+    })
+    activeFilePath.value = diffPath
   }
 
   /** 从磁盘重新加载已打开文件的内容（替换后刷新用） */
   async function reloadOpenFile(path: string) {
+    // 跳过虚拟路径（如 diff:// 模式）
+    if (path.startsWith('diff://')) return
     const file = openFiles.value.find(f => f.path === path)
     if (!file) return
     try {
@@ -189,6 +254,6 @@ export const useProjectStore = defineStore('project', () => {
   return {
     projectPath, fileTree, openFiles, activeFilePath, activeFile, fileReloadTick,
     openProject, toggleDirectory, openFile, pinFile, closeFile, saveFile, loadDirectory, refreshTree,
-    openInBrowser, openAsCode, reloadOpenFile, reloadOpenFiles
+    openInBrowser, openAsCode, openDiff, reloadOpenFile, reloadOpenFiles
   }
 })

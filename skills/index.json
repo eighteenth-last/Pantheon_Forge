@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "generatedAt": "2026-02-24",
+  "skills": [
+    {
+      "slug": "system/plan",
+      "name": "Plan",
+      "summary": "分析需求并生成结构化实施计划，包含分类任务、依赖关系和可执行步骤。",
+      "tags": ["planning", "requirements", "documentation", "task-management"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/api-designer",
+      "name": "API Designer",
+      "summary": "设计RESTful API并生成OpenAPI/Swagger规范文档。",
+      "tags": ["api", "rest", "openapi", "swagger", "design"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/code-review",
+      "name": "Code Review",
+      "summary": "全面的代码审查，分析质量、安全漏洞，提供改进建议。",
+      "tags": ["code-review", "quality", "security", "best-practices"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/git-workflow",
+      "name": "Git Workflow",
+      "summary": "智能Git操作，生成Conventional Commits提交信息、分支管理和PR描述。",
+      "tags": ["git", "version-control", "workflow", "automation"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/docker-compose",
+      "name": "Docker Compose",
+      "summary": "创建和管理多容器应用的Docker Compose配置。",
+      "tags": ["docker", "containers", "devops", "infrastructure"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/database-designer",
+      "name": "Database Designer",
+      "summary": "设计和优化数据库模式，支持多种数据库系统。",
+      "tags": ["database", "sql", "schema", "design", "optimization"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/test-generator",
+      "name": "Test Generator",
+      "summary": "自动生成全面的测试套件，支持多种测试框架。",
+      "tags": ["testing", "unit-tests", "integration-tests", "tdd"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/documentation-writer",
+      "name": "Documentation Writer",
+      "summary": "生成全面的项目文档，包括README、API文档和代码注释。",
+      "tags": ["documentation", "readme", "api-docs", "technical-writing"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/refactor-assistant",
+      "name": "Refactor Assistant",
+      "summary": "智能代码重构，提供设计模式建议和安全转换策略。",
+      "tags": ["refactoring", "design-patterns", "code-quality", "clean-code"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/security-scanner",
+      "name": "Security Scanner",
+      "summary": "全面的安全分析，识别OWASP Top 10漏洞和安全最佳实践。",
+      "tags": ["security", "vulnerability", "owasp", "scanning"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/ci-cd-generator",
+      "name": "CI/CD Generator",
+      "summary": "为GitHub Actions、GitLab CI等平台生成CI/CD流水线。",
+      "tags": ["ci-cd", "devops", "automation", "github-actions"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/prompt-engineer",
+      "name": "Prompt Engineer",
+      "summary": "设计、优化和测试AI模型提示词。",
+      "tags": ["prompts", "ai", "llm", "optimization"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/react-component",
+      "name": "React Component",
+      "summary": "生成React组件，包含TypeScript、hooks和无障碍最佳实践。",
+      "tags": ["react", "typescript", "components", "hooks", "frontend"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/nextjs-app",
+      "name": "Next.js App",
+      "summary": "生成Next.js 14+ App Router组件，包括服务端/客户端组件和数据获取。",
+      "tags": ["nextjs", "react", "app-router", "server-components"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/express-api",
+      "name": "Express API",
+      "summary": "生成Express.js REST API，包含TypeScript、中间件和认证模式。",
+      "tags": ["express", "nodejs", "api", "rest", "backend"],
+      "version": "1.0.0",
+      "status": "active"
+    },
+    {
+      "slug": "community/web-scraper",
+      "name": "Web Scraper",
+      "summary": "从网页提取和处理数据，支持智能解析和限速。",
+      "tags": ["web-scraping", "data-extraction", "parsing", "automation"],
+      "version": "1.0.0",
+      "status": "active"
+    }
+  ]
+}

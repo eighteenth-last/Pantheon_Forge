@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS messages (
   session_id INTEGER NOT NULL REFERENCES sessions(id),
   role TEXT NOT NULL CHECK(role IN ('system','user','assistant','tool')),
   content TEXT NOT NULL,
+  tool_call_id TEXT,
+  tool_calls TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS tool_logs (
@@ -40,6 +42,12 @@ CREATE TABLE IF NOT EXISTS token_usage (
   prompt_tokens INTEGER DEFAULT 0,
   completion_tokens INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS session_memory (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL UNIQUE REFERENCES sessions(id),
+  summary TEXT NOT NULL DEFAULT '',
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 `
 
@@ -65,6 +73,8 @@ export interface MessageRecord {
   session_id: number
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
+  tool_call_id?: string
+  tool_calls?: string // JSON string of tool_calls array
   created_at?: string
 }
 
@@ -80,6 +90,19 @@ export class Database {
 
   private init() {
     this.db.exec(SCHEMA_SQL)
+    // 迁移：给 messages 表添加 tool_call_id 和 tool_calls 字段（如果不存在）
+    try {
+      const cols = this.db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]
+      const colNames = cols.map(c => c.name)
+      if (!colNames.includes('tool_call_id')) {
+        this.db.exec('ALTER TABLE messages ADD COLUMN tool_call_id TEXT')
+      }
+      if (!colNames.includes('tool_calls')) {
+        this.db.exec('ALTER TABLE messages ADD COLUMN tool_calls TEXT')
+      }
+    } catch (err) {
+      console.error('Migration error:', err)
+    }
   }
 
   close() {
@@ -154,6 +177,7 @@ export class Database {
     this.db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId)
     this.db.prepare('DELETE FROM tool_logs WHERE session_id = ?').run(sessionId)
     this.db.prepare('DELETE FROM token_usage WHERE session_id = ?').run(sessionId)
+    this.db.prepare('DELETE FROM session_memory WHERE session_id = ?').run(sessionId)
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId)
   }
 
@@ -162,9 +186,9 @@ export class Database {
     return this.db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY id ASC').all(sessionId) as MessageRecord[]
   }
 
-  addMessage(sessionId: number, role: MessageRecord['role'], content: string): MessageRecord {
-    const info = this.db.prepare('INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)').run(sessionId, role, content)
-    return { id: info.lastInsertRowid as number, session_id: sessionId, role, content }
+  addMessage(sessionId: number, role: MessageRecord['role'], content: string, toolCallId?: string, toolCalls?: string): MessageRecord {
+    const info = this.db.prepare('INSERT INTO messages (session_id, role, content, tool_call_id, tool_calls) VALUES (?, ?, ?, ?, ?)').run(sessionId, role, content, toolCallId || null, toolCalls || null)
+    return { id: info.lastInsertRowid as number, session_id: sessionId, role, content, tool_call_id: toolCallId, tool_calls: toolCalls }
   }
 
   // ---- Tool Logs ----
@@ -175,5 +199,23 @@ export class Database {
   // ---- Token Usage ----
   addTokenUsage(sessionId: number, promptTokens: number, completionTokens: number) {
     this.db.prepare('INSERT INTO token_usage (session_id, prompt_tokens, completion_tokens) VALUES (?, ?, ?)').run(sessionId, promptTokens, completionTokens)
+  }
+
+  // ---- Session Memory ----
+  getSessionMemory(sessionId: number): string | undefined {
+    const row = this.db.prepare('SELECT summary FROM session_memory WHERE session_id = ?').get(sessionId) as { summary: string } | undefined
+    return row?.summary || undefined
+  }
+
+  saveSessionMemory(sessionId: number, summary: string) {
+    this.db.prepare(
+      `INSERT INTO session_memory (session_id, summary, updated_at) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary, updated_at = datetime('now')`
+    ).run(sessionId, summary)
+  }
+
+  /** 删除会话时同时清理记忆 */
+  deleteSessionMemory(sessionId: number) {
+    this.db.prepare('DELETE FROM session_memory WHERE session_id = ?').run(sessionId)
   }
 }

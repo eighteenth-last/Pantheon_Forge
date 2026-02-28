@@ -6,6 +6,7 @@
  * 支持 functionCall / functionResponse 工具调用
  */
 import type { ModelAdapter, Message, ModelConfig, ModelChunk, ToolDefinition } from './base-adapter'
+import { retryFetch } from './retry-fetch'
 
 export class GeminiAdapter implements ModelAdapter {
   async *stream(messages: Message[], config: ModelConfig, tools?: ToolDefinition[]): AsyncGenerator<ModelChunk> {
@@ -27,7 +28,16 @@ export class GeminiAdapter implements ModelAdapter {
     const url = b.endsWith('/chat/completions') ? b : `${b}/chat/completions`
 
     const apiMessages = messages.map(m => {
-      const msg: any = { role: m.role, content: m.content }
+      const msg: any = { role: m.role }
+      if (m.role === 'user' && m.images && m.images.length > 0) {
+        const parts: any[] = [{ type: 'text', text: m.content }]
+        for (const img of m.images) {
+          parts.push({ type: 'image_url', image_url: { url: img } })
+        }
+        msg.content = parts
+      } else {
+        msg.content = m.content
+      }
       if (m.tool_call_id) msg.tool_call_id = m.tool_call_id
       if (m.tool_calls) msg.tool_calls = m.tool_calls
       return msg
@@ -51,13 +61,19 @@ export class GeminiAdapter implements ModelAdapter {
     let response: Response
     try {
       console.log('[Gemini-OpenAI] Requesting:', url)
-      response = await fetch(url, {
+      response = await retryFetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${config.apiKey}`
         },
         body: JSON.stringify(body)
+      }, {
+        maxRetries: 5,
+        baseDelayMs: 5000,
+        onRetry: (attempt, delayMs) => {
+          console.log(`[Gemini] 限流重试 ${attempt}，等待 ${Math.round(delayMs / 1000)}s`)
+        }
       })
     } catch (fetchErr: any) {
       yield { type: 'error', error: `Gemini 网络请求失败: ${fetchErr.message}` }
@@ -75,9 +91,7 @@ export class GeminiAdapter implements ModelAdapter {
 
     const decoder = new TextDecoder()
     let buffer = ''
-    let toolCallId = ''
-    let toolCallName = ''
-    let toolCallArgs = ''
+    const toolCalls = new Map<number, { id: string; name: string; args: string }>()
 
     while (true) {
       const { done, value } = await reader.read()
@@ -92,11 +106,13 @@ export class GeminiAdapter implements ModelAdapter {
         if (!trimmed.startsWith('data: ')) continue
         const data = trimmed.slice(6)
         if (data === '[DONE]') {
-          if (toolCallName) {
-            try {
-              yield { type: 'tool_call', toolCall: { id: toolCallId, name: toolCallName, arguments: JSON.parse(toolCallArgs) } }
-            } catch {
-              yield { type: 'tool_call', toolCall: { id: toolCallId, name: toolCallName, arguments: { raw: toolCallArgs } } }
+          for (const [, tc] of toolCalls) {
+            if (tc.name) {
+              try {
+                yield { type: 'tool_call', toolCall: { id: tc.id, name: tc.name, arguments: JSON.parse(tc.args) } }
+              } catch {
+                yield { type: 'tool_call', toolCall: { id: tc.id, name: tc.name, arguments: { raw: tc.args } } }
+              }
             }
           }
           yield { type: 'done' }
@@ -110,13 +126,30 @@ export class GeminiAdapter implements ModelAdapter {
           if (delta?.content) {
             yield { type: 'text', content: delta.content }
           }
-          if (delta?.tool_calls?.[0]) {
-            const tc = delta.tool_calls[0]
-            if (tc.id) toolCallId = tc.id
-            if (tc.function?.name) toolCallName = tc.function.name
-            if (tc.function?.arguments) toolCallArgs += tc.function.arguments
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0
+              if (!toolCalls.has(idx)) {
+                toolCalls.set(idx, { id: '', name: '', args: '' })
+              }
+              const entry = toolCalls.get(idx)!
+              if (tc.id) entry.id = tc.id
+              if (tc.function?.name) entry.name = tc.function.name
+              if (tc.function?.arguments) entry.args += tc.function.arguments
+            }
           }
         } catch { /* skip */ }
+      }
+    }
+
+    // 流结束但没有 [DONE] 标记时，输出收集到的工具调用
+    for (const [, tc] of toolCalls) {
+      if (tc.name) {
+        try {
+          yield { type: 'tool_call', toolCall: { id: tc.id, name: tc.name, arguments: JSON.parse(tc.args) } }
+        } catch {
+          yield { type: 'tool_call', toolCall: { id: tc.id, name: tc.name, arguments: { raw: tc.args } } }
+        }
       }
     }
 
@@ -182,10 +215,16 @@ export class GeminiAdapter implements ModelAdapter {
     let response: Response
     try {
       console.log('[Gemini-Native] Requesting:', url)
-      response = await fetch(url, {
+      response = await retryFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
+      }, {
+        maxRetries: 5,
+        baseDelayMs: 5000,
+        onRetry: (attempt, delayMs) => {
+          console.log(`[Gemini-Native] 限流重试 ${attempt}，等待 ${Math.round(delayMs / 1000)}s`)
+        }
       })
     } catch (fetchErr: any) {
       yield { type: 'error', error: `Gemini 网络请求失败: ${fetchErr.message}（可能需要代理访问 Google API）` }

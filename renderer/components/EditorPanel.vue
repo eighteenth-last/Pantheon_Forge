@@ -9,19 +9,26 @@ const settings = useSettingsStore()
 const extStore = useExtensionsStore()
 const s = settings.app
 const editorContainer = ref<HTMLElement>()
+const diffContainer = ref<HTMLElement>()
 let monacoEditor: any = null
+let monacoDiffEditor: any = null
 let monaco: any = null
 let isUpdating = false
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 let initPromise: Promise<void> | null = null
+/** 文件原始内容快照（用于计算修改痕迹） */
+const fileSnapshots = new Map<string, string>()
+/** 当前 gutter decorations ID 列表 */
+let currentDecorations: string[] = []
 
 // 内置浏览器
 const browserUrl = ref('')
 const browserLoading = ref(false)
 const browserIframe = ref<HTMLIFrameElement>()
 
-// 当前是否为浏览器模式
+// 当前模式
 const isBrowserMode = computed(() => project.activeFile?.type === 'browser')
+const isDiffMode = computed(() => project.activeFile?.type === 'diff')
 
 // 编辑器右键菜单
 const editorCtx = ref({ show: false, x: 0, y: 0 })
@@ -150,7 +157,7 @@ async function restoreSavedTheme() {
 function loadActiveFile() {
   if (!monacoEditor || !monaco) return
   const file = project.activeFile
-  if (file && file.type !== 'browser') {
+  if (file && file.type !== 'browser' && file.type !== 'diff') {
     isUpdating = true
     const lang = getLanguage(file.name)
     const oldModel = monacoEditor.getModel()
@@ -158,7 +165,59 @@ function loadActiveFile() {
     monacoEditor.setModel(newModel)
     if (oldModel) oldModel.dispose()
     isUpdating = false
+
+    // 保存快照 & 应用修改痕迹
+    snapshotFile(file.path, file.content)
+    const snapshot = fileSnapshots.get(file.path)
+    if (snapshot && snapshot !== file.content) {
+      nextTick(() => applyChangeDecorations(snapshot, file.content))
+    } else {
+      currentDecorations = monacoEditor.deltaDecorations(currentDecorations, [])
+    }
   }
+}
+
+function disposeDiffEditor() {
+  if (monacoDiffEditor) {
+    monacoDiffEditor.dispose()
+    monacoDiffEditor = null
+  }
+}
+
+function loadDiffEditor() {
+  if (!monaco) return
+  const file = project.activeFile
+  if (!file || file.type !== 'diff') return
+
+  // 获取真实文件名（去掉 diff:// 前缀）
+  const realPath = file.path.replace(/^diff:\/\//, '')
+  const lang = getLanguage(realPath)
+
+  // 如果已有 diff editor，更新模型
+  if (monacoDiffEditor) {
+    const originalModel = monaco.editor.createModel(file.diffOriginal || '', lang)
+    const modifiedModel = monaco.editor.createModel(file.content || '', lang)
+    monacoDiffEditor.setModel({ original: originalModel, modified: modifiedModel })
+    return
+  }
+
+  // 创建新的 diff editor
+  if (!diffContainer.value) return
+  monacoDiffEditor = monaco.editor.createDiffEditor(diffContainer.value, {
+    theme: 'vs-dark',
+    fontSize: s.fontSize,
+    fontFamily: s.fontFamily,
+    readOnly: true,
+    automaticLayout: true,
+    scrollBeyondLastLine: false,
+    renderSideBySide: true,
+    minimap: { enabled: false },
+    padding: { top: 8 },
+  })
+
+  const originalModel = monaco.editor.createModel(file.diffOriginal || '', lang)
+  const modifiedModel = monaco.editor.createModel(file.content || '', lang)
+  monacoDiffEditor.setModel({ original: originalModel, modified: modifiedModel })
 }
 
 // ---- 内置浏览器 ----
@@ -207,9 +266,105 @@ function openCurrentInBrowser() {
   closeEditorCtx()
 }
 
+/**
+ * 简易行级 diff：对比旧内容和新内容，返回新增行和删除行位置
+ * 使用 LCS（最长公共子序列）算法
+ */
+function computeLineDiff(oldText: string, newText: string): { added: number[]; deleted: number[] } {
+  const oldLines = oldText.split('\n')
+  const newLines = newText.split('\n')
+  const added: number[] = []
+  const deleted: number[] = []
+
+  // 简化 diff：使用 Map 追踪行内容
+  let oi = 0, ni = 0
+  while (oi < oldLines.length && ni < newLines.length) {
+    if (oldLines[oi] === newLines[ni]) {
+      oi++; ni++
+    } else {
+      // 向前查找匹配
+      let foundInNew = -1, foundInOld = -1
+      for (let j = ni + 1; j < Math.min(ni + 20, newLines.length); j++) {
+        if (oldLines[oi] === newLines[j]) { foundInNew = j; break }
+      }
+      for (let j = oi + 1; j < Math.min(oi + 20, oldLines.length); j++) {
+        if (oldLines[j] === newLines[ni]) { foundInOld = j; break }
+      }
+
+      if (foundInNew !== -1 && (foundInOld === -1 || (foundInNew - ni) <= (foundInOld - oi))) {
+        // 新文件中有新增行
+        for (let j = ni; j < foundInNew; j++) added.push(j + 1)
+        ni = foundInNew
+      } else if (foundInOld !== -1) {
+        // 旧文件中有删除行
+        for (let j = oi; j < foundInOld; j++) deleted.push(ni + 1) // 删除标记在当前新行位置
+        oi = foundInOld
+      } else {
+        // 替换：旧行删除，新行新增
+        deleted.push(ni + 1)
+        added.push(ni + 1)
+        oi++; ni++
+      }
+    }
+  }
+  // 剩余新行 = 新增
+  for (; ni < newLines.length; ni++) added.push(ni + 1)
+  // 剩余旧行 = 删除（标记在文件末尾）
+  if (oi < oldLines.length) {
+    const pos = newLines.length > 0 ? newLines.length : 1
+    for (; oi < oldLines.length; oi++) deleted.push(pos)
+  }
+
+  return { added, deleted }
+}
+
+/** 应用修改痕迹到 Monaco 编辑器 gutter */
+function applyChangeDecorations(oldContent: string, newContent: string) {
+  if (!monacoEditor || !monaco) return
+  const { added, deleted } = computeLineDiff(oldContent, newContent)
+
+  const decorations: any[] = []
+
+  // 绿色：新增行（左侧 gutter 绿色条）
+  for (const line of added) {
+    decorations.push({
+      range: new monaco.Range(line, 1, line, 1),
+      options: {
+        isWholeLine: true,
+        linesDecorationsClassName: 'line-added-gutter',
+        overviewRuler: { color: '#2ea04370', position: monaco.editor.OverviewRulerLane.Left }
+      }
+    })
+  }
+
+  // 红色：删除行（左侧 gutter 红色三角）
+  const uniqueDeleted = [...new Set(deleted)]
+  for (const line of uniqueDeleted) {
+    decorations.push({
+      range: new monaco.Range(line, 1, line, 1),
+      options: {
+        isWholeLine: false,
+        linesDecorationsClassName: 'line-deleted-gutter',
+        overviewRuler: { color: '#f8514970', position: monaco.editor.OverviewRulerLane.Left }
+      }
+    })
+  }
+
+  currentDecorations = monacoEditor.deltaDecorations(currentDecorations, decorations)
+}
+
+/** 保存文件快照（首次打开时记录原始内容） */
+function snapshotFile(path: string, content: string) {
+  if (!fileSnapshots.has(path)) {
+    fileSnapshots.set(path, content)
+  }
+}
+
 async function reloadFileContent() {
   const file = project.activeFile
-  if (!file || file.type === 'browser') return
+  if (!file || file.type === 'browser' || file.type === 'diff') return
+  // 跳过虚拟路径
+  if (file.path.startsWith('diff://')) return
   // 如果 content 为空（从浏览器模式切回），重新读取文件
   if (!file.content) {
     try {
@@ -243,18 +398,27 @@ watch(() => settings.app, (val) => {
 watch(() => project.activeFilePath, () => {
   if (!monacoEditor) {
     initMonaco()
+  }
+  const file = project.activeFile
+  if (file?.type === 'diff') {
+    nextTick(() => loadDiffEditor())
   } else {
+    disposeDiffEditor()
     loadActiveFile()
   }
   // 浏览器模式：加载 URL
   loadBrowserUrl()
 })
 
-// 监听当前文件类型变化（代码 ↔ 浏览器切换）
+// 监听当前文件类型变化（代码 ↔ 浏览器 ↔ diff 切换）
 watch(() => project.activeFile?.type, (newType) => {
   if (newType === 'browser') {
+    disposeDiffEditor()
     loadBrowserUrl()
+  } else if (newType === 'diff') {
+    nextTick(() => loadDiffEditor())
   } else if (newType === 'code' || newType === undefined) {
+    disposeDiffEditor()
     // 切回代码模式，需要重新加载文件内容到编辑器
     reloadFileContent()
   }
@@ -262,7 +426,12 @@ watch(() => project.activeFile?.type, (newType) => {
 
 // 监听文件从磁盘重新加载（搜索替换后刷新编辑器）
 watch(() => project.fileReloadTick, () => {
-  loadActiveFile()
+  const file = project.activeFile
+  if (file?.type === 'diff') {
+    nextTick(() => loadDiffEditor())
+  } else {
+    loadActiveFile()
+  }
 })
 
 // 监听扩展主题变化
@@ -368,7 +537,7 @@ function getFileIcon(name: string): string {
         @click="project.activeFilePath = file.path"
         @dblclick="project.pinFile(file.path)"
       >
-        <i :class="file.type === 'browser' ? 'fa-solid fa-globe text-blue-400' : getFileIcon(file.name)"></i>
+        <i :class="file.type === 'browser' ? 'fa-solid fa-globe text-blue-400' : file.type === 'diff' ? 'fa-solid fa-code-compare text-blue-400' : getFileIcon(file.name)"></i>
         <span :class="{ italic: file.preview || file.modified }">{{ file.name }}</span>
         <span v-if="file.modified" class="w-2 h-2 rounded-full bg-white/50 ml-1"></span>
         <i
@@ -410,8 +579,17 @@ function getFileIcon(name: string): string {
       ></iframe>
     </div>
 
-    <!-- Monaco Editor (hidden when browser mode or no files) -->
-    <div v-show="project.openFiles.length > 0 && !isBrowserMode" ref="editorContainer" class="flex-1 min-h-0" @click="closeEditorCtx"></div>
+    <!-- Monaco Editor (hidden when browser mode, diff mode, or no files) -->
+    <div v-show="project.openFiles.length > 0 && !isBrowserMode && !isDiffMode" ref="editorContainer" class="flex-1 min-h-0" @click="closeEditorCtx"></div>
+
+    <!-- Monaco Diff Editor -->
+    <div v-if="isDiffMode && project.openFiles.length > 0" class="flex-1 flex flex-col min-h-0">
+      <div class="h-7 flex items-center gap-2 px-3 bg-[#1e1e1e] border-b border-[#2e2e32] shrink-0">
+        <i class="fa-solid fa-code-compare text-[10px] text-blue-400"></i>
+        <span class="text-[11px] text-[#cccccc] truncate">{{ project.activeFile?.diffLabel }}</span>
+      </div>
+      <div ref="diffContainer" class="flex-1 min-h-0"></div>
+    </div>
 
     <!-- 编辑器中文右键菜单 -->
     <Teleport to="body">
@@ -503,5 +681,22 @@ function getFileIcon(name: string): string {
   height: 1px;
   background: #3c3c3c;
   margin: 4px 12px;
+}
+</style>
+
+<!-- Monaco gutter decorations（必须全局样式） -->
+<style>
+.line-added-gutter {
+  background: #2ea043;
+  width: 3px !important;
+  margin-left: 3px;
+}
+.line-deleted-gutter {
+  width: 0 !important;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid #f85149;
+  margin-left: 0px;
+  margin-top: 2px;
 }
 </style>

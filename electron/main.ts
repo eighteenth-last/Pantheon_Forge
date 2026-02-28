@@ -3,17 +3,152 @@ import { join } from 'path'
 import { AgentCore } from '../agent/agent-core'
 import { ModelRouter } from '../agent/model-router'
 import { ToolExecutor } from '../agent/tool-executor'
+import { ServiceManager } from '../agent/service-manager'
+import { SkillLoader } from '../agent/skill-loader'
+import { MCPClient } from '../agent/mcp-client'
 import { Database } from '../database/db'
 
 import { createServer, type Server } from 'http'
 import { readFile as fsReadFile } from 'fs/promises'
 import { extname } from 'path'
+import { Worker } from 'worker_threads'
 
 let mainWindow: BrowserWindow | null = null
 let database: Database
 let agentCore: AgentCore
+let serviceManager: ServiceManager
 let fileServer: Server | null = null
 let fileServerPort = 0
+
+// ========== Git Worker（独立线程执行 git 命令） ==========
+let gitWorker: Worker | null = null
+const gitPendingRequests = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>()
+let gitReqId = 0
+
+function initGitWorker() {
+  const workerPath = join(__dirname, 'git-worker.js')
+  gitWorker = new Worker(workerPath)
+  gitWorker.on('message', (msg: { id: string; result?: any; error?: string }) => {
+    const pending = gitPendingRequests.get(msg.id)
+    if (pending) {
+      gitPendingRequests.delete(msg.id)
+      if (msg.error) pending.reject(new Error(msg.error))
+      else pending.resolve(msg.result)
+    }
+  })
+  gitWorker.on('error', (err) => {
+    console.error('[GitWorker] error:', err)
+  })
+}
+
+function gitExec(command: string[], cwd: string, parser: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const id = `git_${++gitReqId}`
+    gitPendingRequests.set(id, { resolve, reject })
+    gitWorker?.postMessage({ id, command, cwd, parser })
+  })
+}
+
+// ========== Search Worker（独立线程执行文件搜索） ==========
+let searchWorker: Worker | null = null
+const searchPendingRequests = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>()
+let searchReqId = 0
+
+function initSearchWorker() {
+  const workerPath = join(__dirname, 'search-worker.js')
+  searchWorker = new Worker(workerPath)
+  searchWorker.on('message', (msg: { id: string; result?: any; error?: string; truncated?: boolean; totalMatches?: number }) => {
+    const pending = searchPendingRequests.get(msg.id)
+    if (pending) {
+      searchPendingRequests.delete(msg.id)
+      if (msg.error) pending.reject(new Error(msg.error))
+      else pending.resolve({ results: msg.result, truncated: msg.truncated, totalMatches: msg.totalMatches })
+    }
+  })
+  searchWorker.on('error', (err) => {
+    console.error('[SearchWorker] error:', err)
+  })
+}
+
+function searchExec(cwd: string, query: string, type: 'agent-search' | 'ipc-search', options: Record<string, any> = {}): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const id = `search_${++searchReqId}`
+    searchPendingRequests.set(id, { resolve, reject })
+    searchWorker?.postMessage({ id, type, cwd, query, options })
+  })
+}
+
+// ========== Agent Chunk 批量发送（减少 IPC 开销） ==========
+let chunkBuffer: { sessionId: number; chunk: any }[] = []
+let chunkFlushTimer: ReturnType<typeof setTimeout> | null = null
+const CHUNK_FLUSH_INTERVAL = 32 // ms — 约 30fps，人眼感知不到延迟
+
+function queueAgentChunk(sessionId: number, chunk: any) {
+  chunkBuffer.push({ sessionId, chunk })
+  if (!chunkFlushTimer) {
+    chunkFlushTimer = setTimeout(flushAgentChunks, CHUNK_FLUSH_INTERVAL)
+  }
+}
+
+function flushAgentChunks() {
+  chunkFlushTimer = null
+  if (chunkBuffer.length === 0) return
+  const batch = chunkBuffer
+  chunkBuffer = []
+  // 批量发送：一次 IPC 调用传递所有 chunks
+  mainWindow?.webContents.send('agent:chunks', batch)
+}
+
+/** 立即刷新（用于 done/error 等需要即时响应的事件） */
+function flushAgentChunksNow() {
+  if (chunkFlushTimer) { clearTimeout(chunkFlushTimer); chunkFlushTimer = null }
+  flushAgentChunks()
+}
+
+// ========== PTY 输出节流（减少终端数据 IPC 洪泛） ==========
+const ptyBufferMap = new Map<number, string>()
+let ptyFlushTimer: ReturnType<typeof setTimeout> | null = null
+const PTY_FLUSH_INTERVAL = 16 // ms — 约 60fps
+
+function queuePtyData(id: number, data: string) {
+  const existing = ptyBufferMap.get(id) || ''
+  ptyBufferMap.set(id, existing + data)
+  if (!ptyFlushTimer) {
+    ptyFlushTimer = setTimeout(flushPtyData, PTY_FLUSH_INTERVAL)
+  }
+}
+
+function flushPtyData() {
+  ptyFlushTimer = null
+  for (const [id, data] of ptyBufferMap) {
+    if (data) mainWindow?.webContents.send('terminal:data', { id, data })
+  }
+  ptyBufferMap.clear()
+}
+
+// ========== 文件监听事件防抖（批量合并） ==========
+let fsChangeBuffer: { eventType: string; filename: string; dirPath: string }[] = []
+let fsChangeTimer: ReturnType<typeof setTimeout> | null = null
+const FS_CHANGE_DEBOUNCE = 300 // ms
+
+function queueFsChange(eventType: string, filename: string, dirPath: string) {
+  fsChangeBuffer.push({ eventType, filename, dirPath })
+  if (!fsChangeTimer) {
+    fsChangeTimer = setTimeout(flushFsChanges, FS_CHANGE_DEBOUNCE)
+  }
+}
+
+function flushFsChanges() {
+  fsChangeTimer = null
+  if (fsChangeBuffer.length === 0) return
+  // 去重：同一文件只保留最后一个事件
+  const seen = new Map<string, typeof fsChangeBuffer[0]>()
+  for (const ev of fsChangeBuffer) seen.set(ev.filename, ev)
+  const batch = [...seen.values()]
+  fsChangeBuffer = []
+  // 批量发送
+  mainWindow?.webContents.send('fs:changes', batch)
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -116,21 +251,39 @@ app.whenReady().then(async () => {
   database = new Database()
   const modelRouter = new ModelRouter(database)
   const toolExecutor = new ToolExecutor()
-  agentCore = new AgentCore(modelRouter, toolExecutor, database)
+
+  // 初始化 SkillLoader（本地 skills/ 目录）和 MCPClient
+  const skillsDir = join(app.getAppPath(), 'skills')
+  const skillLoader = new SkillLoader(skillsDir)
+  const mcpClient = new MCPClient()
+
+  agentCore = new AgentCore(modelRouter, toolExecutor, database, skillLoader, mcpClient)
+
+  // 注入 SkillLoader 到 ToolExecutor（供 load_skill 工具使用）
+  toolExecutor.setSkillLoader(skillLoader)
+
+  // 启动 Git Worker 线程
+  initGitWorker()
+
+  // 启动 Search Worker 线程
+  initSearchWorker()
 
   // 启动本地文件服务器（用于内置浏览器预览）
   await startFileServer()
 
   createWindow()
-  registerIpcHandlers()
+  registerIpcHandlers(toolExecutor)
 })
 
 app.on('window-all-closed', () => {
   database?.close()
+  gitWorker?.terminate()
+  searchWorker?.terminate()
+  agentCore?.shutdown().catch(() => {})
   if (process.platform !== 'darwin') app.quit()
 })
 
-function registerIpcHandlers() {
+function registerIpcHandlers(toolExecutor: ToolExecutor) {
   // ---- Window Controls ----
   ipcMain.on('window:minimize', () => mainWindow?.minimize())
   ipcMain.on('window:maximize', () => {
@@ -154,31 +307,42 @@ function registerIpcHandlers() {
   ipcMain.handle('sessions:getMessages', (_e, sessionId) => database.getMessages(sessionId))
   ipcMain.handle('sessions:delete', (_e, sessionId) => database.deleteSession(sessionId))
 
-  // ---- Agent Chat (streaming via event) ----
-  ipcMain.handle('agent:chat', async (_e, sessionId: number, userMessage: string, projectPath: string, modelId?: number | null) => {
+  // ---- Agent Chat (streaming via batched events) ----
+  ipcMain.handle('agent:chat', async (_e, sessionId: number, userMessage: string, projectPath: string, modelId?: number | null, images?: string[]) => {
     try {
       const chunks: string[] = []
-      for await (const chunk of agentCore.run(sessionId, userMessage, projectPath, modelId ?? undefined)) {
-        mainWindow?.webContents.send('agent:chunk', { sessionId, chunk })
+      for await (const chunk of agentCore.run(sessionId, userMessage, projectPath, modelId ?? undefined, images)) {
+        // 文本和 thinking 走批量队列，工具调用/done/error 立即刷新
+        const chunkType = (chunk as any).type
+        if (chunkType === 'text' || chunkType === 'thinking') {
+          queueAgentChunk(sessionId, chunk)
+        } else {
+          // tool_call / tool_result / done / error → 先刷新缓冲区再发送
+          flushAgentChunksNow()
+          mainWindow?.webContents.send('agent:chunks', [{ sessionId, chunk }])
+        }
         chunks.push(typeof chunk === 'string' ? chunk : JSON.stringify(chunk))
       }
+      flushAgentChunksNow()
       return { success: true, content: chunks.join('') }
     } catch (err: any) {
+      flushAgentChunksNow()
       // 确保错误通过 chunk 事件通知前端
-      mainWindow?.webContents.send('agent:chunk', {
-        sessionId,
-        chunk: { type: 'error', error: err.message || '未知错误' }
-      })
-      mainWindow?.webContents.send('agent:chunk', {
-        sessionId,
-        chunk: { type: 'done' }
-      })
+      mainWindow?.webContents.send('agent:chunks', [
+        { sessionId, chunk: { type: 'error', error: err.message || '未知错误' } },
+        { sessionId, chunk: { type: 'done' } }
+      ])
       return { success: false, error: err.message }
     }
   })
 
   ipcMain.handle('agent:stop', () => {
     agentCore.stop()
+    return { success: true }
+  })
+
+  ipcMain.handle('agent:setConfig', (_e, config: any) => {
+    agentCore.setConfig(config)
     return { success: true }
   })
 
@@ -232,11 +396,30 @@ function registerIpcHandlers() {
 
   // ---- Interactive Terminal (node-pty, multi-instance) ----
   const ptyMap = new Map<number, any>()
-  let nextTermId = 1
+  // 输出缓冲区：每个终端保留最近的输出（用于 Agent 查询）
+  const ptyOutputBuffer = new Map<number, string[]>()
+  const PTY_BUFFER_MAX_LINES = 200
+  const nextTermIdRef = { value: 1 }
+
+  // 创建 ServiceManager 并注入到 ToolExecutor
+  serviceManager = new ServiceManager(ptyMap, ptyOutputBuffer, nextTermIdRef, () => mainWindow)
+  toolExecutor.setServiceManager(serviceManager)
+
+  // 注入搜索函数（委托给 SearchWorker）
+  toolExecutor.setSearchFunction((cwd, query, options) => searchExec(cwd, query, 'agent-search', options))
+
+  /** 向终端输出缓冲区追加数据 */
+  function appendPtyBuffer(id: number, data: string) {
+    if (!ptyOutputBuffer.has(id)) ptyOutputBuffer.set(id, [])
+    const buf = ptyOutputBuffer.get(id)!
+    const lines = data.split('\n')
+    for (const line of lines) buf.push(line)
+    while (buf.length > PTY_BUFFER_MAX_LINES) buf.shift()
+  }
 
   ipcMain.handle('terminal:create', async (_e, cwd: string) => {
     const pty = await import('@lydell/node-pty')
-    const id = nextTermId++
+    const id = nextTermIdRef.value++
 
     const isWin = process.platform === 'win32'
     const shell = isWin ? 'powershell.exe' : (process.env.SHELL || '/bin/bash')
@@ -250,8 +433,11 @@ function registerIpcHandlers() {
       env: { ...process.env } as Record<string, string>
     })
 
+    ptyOutputBuffer.set(id, [])
+
     proc.onData((data: string) => {
-      mainWindow?.webContents.send('terminal:data', { id, data })
+      appendPtyBuffer(id, data)
+      queuePtyData(id, data) // 节流发送到渲染进程
     })
     proc.onExit(({ exitCode }: { exitCode: number }) => {
       mainWindow?.webContents.send('terminal:exit', { id, exitCode })
@@ -273,12 +459,38 @@ function registerIpcHandlers() {
   ipcMain.handle('terminal:kill', (_e, id: number) => {
     const proc = ptyMap.get(id)
     if (proc) { proc.kill(); ptyMap.delete(id) }
+    ptyOutputBuffer.delete(id)
     return true
   })
 
   ipcMain.handle('terminal:killAll', () => {
     for (const [id, proc] of ptyMap) { proc.kill(); ptyMap.delete(id) }
+    ptyOutputBuffer.clear()
     return true
+  })
+
+  // ---- Service Management IPC (前端调用) ----
+  ipcMain.handle('service:start', async (_e, serviceId: string, command: string, cwd: string, options?: any) => {
+    return serviceManager.startService(serviceId, command, cwd, options)
+  })
+
+  ipcMain.handle('service:check', (_e, serviceId: string) => {
+    return serviceManager.checkService(serviceId)
+  })
+
+  ipcMain.handle('service:stop', (_e, serviceId: string) => {
+    return serviceManager.stopService(serviceId)
+  })
+
+  ipcMain.handle('service:list', () => {
+    return serviceManager.listServices()
+  })
+
+  // 获取终端输出缓冲区
+  ipcMain.handle('terminal:getOutput', (_e, id: number, lines?: number) => {
+    const buf = ptyOutputBuffer.get(id) || []
+    const n = lines || 50
+    return buf.slice(-n).join('\n')
   })
 
   // Keep old shell:exec for agent tool use
@@ -301,7 +513,7 @@ function registerIpcHandlers() {
     if (watcher) { watcher.close(); watcher = null }
     watcher = watch(dirPath, { recursive: true }, (eventType, filename) => {
       if (filename && !filename.includes('node_modules') && !filename.startsWith('.git')) {
-        mainWindow?.webContents.send('fs:changed', { eventType, filename, dirPath })
+        queueFsChange(eventType, filename, dirPath) // 防抖批量发送
       }
     })
     return true
@@ -323,215 +535,85 @@ function registerIpcHandlers() {
     return `http://127.0.0.1:${fileServerPort}/?file=${encodeURIComponent(filePath)}`
   })
 
-  // ---- Git Operations ----
+  // ---- Git Operations (via Worker Thread) ----
   ipcMain.handle('git:isRepo', async (_e, cwd: string) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['rev-parse', '--is-inside-work-tree'], { cwd, shell: true })
-      let out = ''
-      proc.stdout?.on('data', (d: Buffer) => { out += d.toString() })
-      proc.on('close', code => resolve(code === 0 && out.trim() === 'true'))
-      proc.on('error', () => resolve(false))
-    })
+    try {
+      const raw = await gitExec(['rev-parse', '--is-inside-work-tree'], cwd, 'lines')
+      return raw === 'true'
+    } catch { return false }
   })
 
-  ipcMain.handle('git:init', async (_e, cwd: string) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['init'], { cwd, shell: true })
-      let out = '', err = ''
-      proc.stdout?.on('data', (d: Buffer) => { out += d.toString() })
-      proc.stderr?.on('data', (d: Buffer) => { err += d.toString() })
-      proc.on('close', code => resolve({ success: code === 0, output: out + err }))
-      proc.on('error', (e) => resolve({ success: false, output: e.message }))
-    })
-  })
+  ipcMain.handle('git:init', (_e, cwd: string) => gitExec(['init'], cwd, 'result'))
 
-  ipcMain.handle('git:status', async (_e, cwd: string) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['status', '--porcelain=v1', '-uall'], { cwd, shell: true })
-      let out = ''
-      proc.stdout?.on('data', (d: Buffer) => { out += d.toString() })
-      proc.on('close', code => {
-        if (code !== 0) { resolve([]); return }
-        const files = out.trim().split('\n').filter(Boolean).map(line => {
-          const status = line.substring(0, 2)
-          const file = line.substring(3)
-          return { status: status.trim() || '?', file }
-        })
-        resolve(files)
-      })
-      proc.on('error', () => resolve([]))
-    })
-  })
+  ipcMain.handle('git:status', (_e, cwd: string) => gitExec(['status', '--porcelain=v1', '-uall'], cwd, 'status'))
 
   ipcMain.handle('git:branch', async (_e, cwd: string) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['branch', '--show-current'], { cwd, shell: true })
-      let out = ''
-      proc.stdout?.on('data', (d: Buffer) => { out += d.toString() })
-      proc.on('close', () => resolve(out.trim() || 'main'))
-      proc.on('error', () => resolve(''))
-    })
+    try {
+      const raw = await gitExec(['branch', '--show-current'], cwd, 'lines')
+      return raw || 'main'
+    } catch { return '' }
   })
 
   ipcMain.handle('git:add', async (_e, cwd: string, files: string[]) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['add', ...files], { cwd, shell: true })
-      proc.on('close', code => resolve(code === 0))
-      proc.on('error', () => resolve(false))
-    })
+    try { await gitExec(['add', ...files], cwd, 'boolean'); return true } catch { return false }
   })
 
   ipcMain.handle('git:unstage', async (_e, cwd: string, files: string[]) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['reset', 'HEAD', ...files], { cwd, shell: true })
-      proc.on('close', code => resolve(code === 0))
-      proc.on('error', () => resolve(false))
-    })
+    try { await gitExec(['reset', 'HEAD', ...files], cwd, 'boolean'); return true } catch { return false }
   })
 
-  ipcMain.handle('git:commit', async (_e, cwd: string, message: string) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['commit', '-m', message], { cwd, shell: true })
-      let out = '', err = ''
-      proc.stdout?.on('data', (d: Buffer) => { out += d.toString() })
-      proc.stderr?.on('data', (d: Buffer) => { err += d.toString() })
-      proc.on('close', code => resolve({ success: code === 0, output: out + err }))
-      proc.on('error', (e) => resolve({ success: false, output: e.message }))
-    })
-  })
+  ipcMain.handle('git:commit', (_e, cwd: string, message: string) => gitExec(['commit', '-m', message], cwd, 'result'))
 
   ipcMain.handle('git:diff', async (_e, cwd: string, file: string) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['diff', '--', file], { cwd, shell: true })
-      let out = ''
-      proc.stdout?.on('data', (d: Buffer) => { out += d.toString() })
-      proc.on('close', () => resolve(out))
-      proc.on('error', () => resolve(''))
-    })
+    try { return await gitExec(['diff', '--', file], cwd, 'raw') } catch { return '' }
   })
 
   ipcMain.handle('git:discard', async (_e, cwd: string, file: string) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['checkout', '--', file], { cwd, shell: true })
-      proc.on('close', code => resolve(code === 0))
-      proc.on('error', () => resolve(false))
-    })
+    try { await gitExec(['checkout', '--', file], cwd, 'boolean'); return true } catch { return false }
   })
 
-  ipcMain.handle('git:log', async (_e, cwd: string, count: number = 20) => {
-    const { spawn } = await import('child_process')
-    return new Promise((resolve) => {
-      const proc = spawn('git', ['log', `--max-count=${count}`, '--pretty=format:%H||%h||%an||%ar||%s'], { cwd, shell: true })
-      let out = ''
-      proc.stdout?.on('data', (d: Buffer) => { out += d.toString() })
-      proc.on('close', () => {
-        const commits = out.trim().split('\n').filter(Boolean).map(line => {
-          const [hash, shortHash, author, date, ...msgParts] = line.split('||')
-          return { hash, shortHash, author, date, message: msgParts.join('||') }
-        })
-        resolve(commits)
-      })
-      proc.on('error', () => resolve([]))
-    })
+  ipcMain.handle('git:log', (_e, cwd: string, count: number = 20) =>
+    gitExec(['log', `--max-count=${count}`, '--pretty=format:%H%x09%h%x09%an%x09%ar%x09%s'], cwd, 'log')
+  )
+
+  ipcMain.handle('git:showCommitFiles', (_e, cwd: string, hash: string) =>
+    gitExec(['diff-tree', '--no-commit-id', '-r', '--name-status', hash], cwd, 'commitFiles')
+  )
+
+  ipcMain.handle('git:diffCommitFile', async (_e, cwd: string, hash: string, file: string) => {
+    try { return await gitExec(['diff', `${hash}~1`, hash, '--', file], cwd, 'raw') } catch { return '' }
   })
 
-  // ---- 全局搜索 & 替换 ----
+  ipcMain.handle('git:diffStaged', async (_e, cwd: string, file: string) => {
+    try { return await gitExec(['diff', '--cached', '--', file], cwd, 'raw') } catch { return '' }
+  })
+
+  ipcMain.handle('git:showFile', async (_e, cwd: string, ref: string, file: string) => {
+    try { return await gitExec(['show', `${ref}:${file}`], cwd, 'raw') } catch { return '' }
+  })
+
+  ipcMain.handle('git:pull', (_e, cwd: string) => gitExec(['pull'], cwd, 'result'))
+  ipcMain.handle('git:push', (_e, cwd: string) => gitExec(['push'], cwd, 'result'))
+  ipcMain.handle('git:fetch', (_e, cwd: string) => gitExec(['fetch', '--all'], cwd, 'result'))
+
+  // ---- 全局搜索 & 替换（via Search Worker） ----
   ipcMain.handle('search:files', async (_e, cwd: string, query: string, options: {
     caseSensitive?: boolean; wholeWord?: boolean; useRegex?: boolean;
     includePattern?: string; excludePattern?: string
   }) => {
-    const { readdir, stat, readFile: rf } = await import('fs/promises')
-    const { join: pjoin, relative, extname: ext } = await import('path')
-
     if (!query) return []
-
-    // 构建正则
-    let pattern: RegExp
     try {
-      let src = options.useRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      if (options.wholeWord) src = `\\b${src}\\b`
-      pattern = new RegExp(src, options.caseSensitive ? 'g' : 'gi')
-    } catch { return [] }
-
-    // 简单 glob → RegExp 转换
-    function globToRegex(glob: string): RegExp {
-      const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')
-      return new RegExp(`(^|/)${escaped}$`, 'i')
+      const { results } = await searchExec(cwd, query, 'ipc-search', {
+        caseSensitive: options.caseSensitive,
+        wholeWord: options.wholeWord,
+        isRegex: options.useRegex,
+        includePattern: options.includePattern,
+        excludePattern: options.excludePattern
+      })
+      return results
+    } catch {
+      return []
     }
-
-    const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'dist-electron', '.idea', '.vscode', '__pycache__', '.next', 'build', 'target', '.gradle'])
-    const TEXT_EXTS = new Set([
-      '.ts', '.tsx', '.js', '.jsx', '.vue', '.html', '.htm', '.css', '.scss', '.less',
-      '.json', '.md', '.txt', '.xml', '.svg', '.yaml', '.yml', '.toml', '.ini', '.cfg',
-      '.py', '.java', '.kt', '.go', '.rs', '.rb', '.php', '.c', '.cpp', '.h', '.cs',
-      '.swift', '.dart', '.lua', '.sh', '.bat', '.ps1', '.sql', '.graphql', '.env',
-      '.gitignore', '.editorconfig', '.prettierrc', '.eslintrc', '.dockerfile',
-    ])
-
-    const results: { file: string; relPath: string; matches: { line: number; col: number; text: string; matchText: string }[] }[] = []
-    let fileCount = 0
-    const MAX_FILES = 5000
-    const MAX_RESULTS = 500
-
-    function shouldInclude(relPath: string): boolean {
-      if (options.includePattern) {
-        const patterns = options.includePattern.split(',').map(p => p.trim()).filter(Boolean)
-        if (patterns.length > 0 && !patterns.some(p => globToRegex(p).test(relPath))) return false
-      }
-      if (options.excludePattern) {
-        const patterns = options.excludePattern.split(',').map(p => p.trim()).filter(Boolean)
-        if (patterns.some(p => globToRegex(p).test(relPath))) return false
-      }
-      return true
-    }
-
-    async function walk(dir: string) {
-      if (fileCount >= MAX_FILES || results.length >= MAX_RESULTS) return
-      let entries
-      try { entries = await readdir(dir, { withFileTypes: true }) } catch { return }
-      for (const entry of entries) {
-        if (fileCount >= MAX_FILES || results.length >= MAX_RESULTS) return
-        const fullPath = pjoin(dir, entry.name)
-        if (entry.isDirectory()) {
-          if (!SKIP_DIRS.has(entry.name)) await walk(fullPath)
-        } else {
-          const e = ext(entry.name).toLowerCase()
-          const isText = TEXT_EXTS.has(e) || entry.name.startsWith('.') || e === ''
-          if (!isText) continue
-          const relPath = relative(cwd, fullPath).replace(/\\/g, '/')
-          if (!shouldInclude(relPath)) continue
-          fileCount++
-          try {
-            const content = await rf(fullPath, 'utf-8')
-            const lines = content.split('\n')
-            const matches: { line: number; col: number; text: string; matchText: string }[] = []
-            for (let i = 0; i < lines.length; i++) {
-              pattern.lastIndex = 0
-              let m
-              while ((m = pattern.exec(lines[i])) !== null) {
-                matches.push({ line: i + 1, col: m.index + 1, text: lines[i], matchText: m[0] })
-                if (!pattern.global) break
-              }
-            }
-            if (matches.length > 0) {
-              results.push({ file: fullPath, relPath, matches })
-            }
-          } catch { /* skip binary / unreadable */ }
-        }
-      }
-    }
-
-    await walk(cwd)
-    return results
   })
 
   ipcMain.handle('search:replace', async (_e, cwd: string, filePath: string, query: string, replacement: string, options: {

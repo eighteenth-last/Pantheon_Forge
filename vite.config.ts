@@ -27,6 +27,28 @@ export default defineConfig({
         }
       },
       {
+        entry: 'electron/git-worker.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: {
+              external: []
+            }
+          }
+        }
+      },
+      {
+        entry: 'electron/search-worker.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: {
+              external: []
+            }
+          }
+        }
+      },
+      {
         entry: 'electron/preload.ts',
         onstart(options) {
           options.reload()

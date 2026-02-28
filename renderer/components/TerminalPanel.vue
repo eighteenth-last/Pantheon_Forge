@@ -24,6 +24,7 @@ const termContainerEl = ref<HTMLElement>()
 
 let unsubData: (() => void) | null = null
 let unsubExit: (() => void) | null = null
+let unsubServiceCreated: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let termCounter = 0
 
@@ -151,6 +152,17 @@ function setupGlobalListeners() {
       inst.term.writeln(`\r\n\x1b[33m进程已退出 (code: ${exitCode})\x1b[0m`)
     }
   })
+  // 监听 Agent 启动的服务终端
+  unsubServiceCreated = window.api.service.onTerminalCreated(({ id, serviceId, command }) => {
+    // 检查是否已存在该终端
+    if (terminals.find(t => t.id === id)) return
+    const { term, fitAddon } = createXterm()
+    termCounter++
+    const inst: TermInstance = { id, label: `🔧 ${serviceId}`, term, fitAddon }
+    terminals.push(inst)
+    activeTermIdx.value = terminals.length - 1
+    nextTick(() => mountTerminal(inst))
+  })
 }
 
 // ---- Resize observer ----
@@ -201,6 +213,7 @@ onMounted(async () => {
 onUnmounted(() => {
   unsubData?.()
   unsubExit?.()
+  unsubServiceCreated?.()
   resizeObserver?.disconnect()
   window.removeEventListener('terminal:run-command', onRunCommand)
   for (const t of terminals) { t.term.dispose() }

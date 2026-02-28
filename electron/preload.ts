@@ -22,13 +22,17 @@ const api = {
 
   // Agent
   agent: {
-    chat: (sessionId: number, message: string, projectPath: string, modelId?: number | null) =>
-      ipcRenderer.invoke('agent:chat', sessionId, message, projectPath, modelId),
+    chat: (sessionId: number, message: string, projectPath: string, modelId?: number | null, images?: string[]) =>
+      ipcRenderer.invoke('agent:chat', sessionId, message, projectPath, modelId, images),
     stop: () => ipcRenderer.invoke('agent:stop'),
+    setConfig: (config: any) => ipcRenderer.invoke('agent:setConfig', config),
     onChunk: (cb: (data: any) => void) => {
-      const handler = (_e: any, data: any) => cb(data)
-      ipcRenderer.on('agent:chunk', handler)
-      return () => ipcRenderer.removeListener('agent:chunk', handler)
+      // 支持批量 chunks（新协议）
+      const batchHandler = (_e: any, batch: any[]) => {
+        for (const data of batch) cb(data)
+      }
+      ipcRenderer.on('agent:chunks', batchHandler)
+      return () => ipcRenderer.removeListener('agent:chunks', batchHandler)
     }
   },
 
@@ -44,9 +48,12 @@ const api = {
     watch: (path: string) => ipcRenderer.invoke('fs:watch', path),
     unwatch: () => ipcRenderer.invoke('fs:unwatch'),
     onChanged: (cb: (data: any) => void) => {
-      const handler = (_e: any, data: any) => cb(data)
-      ipcRenderer.on('fs:changed', handler)
-      return () => ipcRenderer.removeListener('fs:changed', handler)
+      // 支持批量文件变更事件（新协议）
+      const batchHandler = (_e: any, batch: any[]) => {
+        for (const data of batch) cb(data)
+      }
+      ipcRenderer.on('fs:changes', batchHandler)
+      return () => ipcRenderer.removeListener('fs:changes', batchHandler)
     }
   },
 
@@ -72,6 +79,7 @@ const api = {
     resize: (id: number, cols: number, rows: number) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
     kill: (id: number) => ipcRenderer.invoke('terminal:kill', id),
     killAll: () => ipcRenderer.invoke('terminal:killAll'),
+    getOutput: (id: number, lines?: number) => ipcRenderer.invoke('terminal:getOutput', id, lines),
     onData: (cb: (payload: { id: number; data: string }) => void) => {
       const handler = (_e: any, payload: { id: number; data: string }) => cb(payload)
       ipcRenderer.on('terminal:data', handler)
@@ -81,6 +89,20 @@ const api = {
       const handler = (_e: any, payload: { id: number; exitCode: number }) => cb(payload)
       ipcRenderer.on('terminal:exit', handler)
       return () => ipcRenderer.removeListener('terminal:exit', handler)
+    }
+  },
+
+  // Service Management (Agent 长时间运行服务)
+  service: {
+    start: (serviceId: string, command: string, cwd: string, options?: { successPattern?: string; errorPattern?: string; timeoutMs?: number }) =>
+      ipcRenderer.invoke('service:start', serviceId, command, cwd, options),
+    check: (serviceId: string) => ipcRenderer.invoke('service:check', serviceId),
+    stop: (serviceId: string) => ipcRenderer.invoke('service:stop', serviceId),
+    list: () => ipcRenderer.invoke('service:list'),
+    onTerminalCreated: (cb: (payload: { id: number; serviceId: string; command: string }) => void) => {
+      const handler = (_e: any, payload: any) => cb(payload)
+      ipcRenderer.on('service:terminal-created', handler)
+      return () => ipcRenderer.removeListener('service:terminal-created', handler)
     }
   },
 
@@ -106,6 +128,13 @@ const api = {
     diff: (cwd: string, file: string) => ipcRenderer.invoke('git:diff', cwd, file),
     discard: (cwd: string, file: string) => ipcRenderer.invoke('git:discard', cwd, file),
     log: (cwd: string, count?: number) => ipcRenderer.invoke('git:log', cwd, count),
+    showCommitFiles: (cwd: string, hash: string) => ipcRenderer.invoke('git:showCommitFiles', cwd, hash),
+    diffCommitFile: (cwd: string, hash: string, file: string) => ipcRenderer.invoke('git:diffCommitFile', cwd, hash, file),
+    diffStaged: (cwd: string, file: string) => ipcRenderer.invoke('git:diffStaged', cwd, file),
+    showFile: (cwd: string, ref: string, file: string) => ipcRenderer.invoke('git:showFile', cwd, ref, file),
+    pull: (cwd: string) => ipcRenderer.invoke('git:pull', cwd),
+    push: (cwd: string) => ipcRenderer.invoke('git:push', cwd),
+    fetch: (cwd: string) => ipcRenderer.invoke('git:fetch', cwd),
   },
 
   // Search

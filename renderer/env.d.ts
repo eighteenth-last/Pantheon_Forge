@@ -24,8 +24,9 @@ interface Window {
       delete: (sessionId: number) => Promise<void>
     }
     agent: {
-      chat: (sessionId: number, message: string, projectPath: string, modelId?: number | null) => Promise<any>
+      chat: (sessionId: number, message: string, projectPath: string, modelId?: number | null, images?: string[]) => Promise<any>
       stop: () => Promise<void>
+      setConfig: (config: any) => Promise<{ success: boolean }>
       onChunk: (cb: (data: any) => void) => () => void
     }
     fs: {
@@ -51,8 +52,17 @@ interface Window {
       resize: (id: number, cols: number, rows: number) => Promise<void>
       kill: (id: number) => Promise<boolean>
       killAll: () => Promise<boolean>
+      getOutput: (id: number, lines?: number) => Promise<string>
       onData: (cb: (payload: { id: number; data: string }) => void) => () => void
       onExit: (cb: (payload: { id: number; exitCode: number }) => void) => () => void
+    }
+    service: {
+      start: (serviceId: string, command: string, cwd: string, options?: { successPattern?: string; errorPattern?: string; timeoutMs?: number }) =>
+        Promise<{ success: boolean; status: string; termId: number; output: string }>
+      check: (serviceId: string) => Promise<{ exists: boolean; status: string; termId?: number; command?: string; uptime?: number; output: string }>
+      stop: (serviceId: string) => Promise<{ success: boolean; error?: string }>
+      list: () => Promise<{ serviceId: string; termId: number; command: string; status: string; alive: boolean; startTime: number }[]>
+      onTerminalCreated: (cb: (payload: { id: number; serviceId: string; command: string }) => void) => () => void
     }
     dialog: {
       openFolder: () => Promise<string | null>
@@ -63,7 +73,7 @@ interface Window {
     git: {
       isRepo: (cwd: string) => Promise<boolean>
       init: (cwd: string) => Promise<{ success: boolean; output: string }>
-      status: (cwd: string) => Promise<{ status: string; file: string }[]>
+      status: (cwd: string) => Promise<{ items: { status: string; file: string }[]; truncated: boolean; total: number }>
       branch: (cwd: string) => Promise<string>
       add: (cwd: string, files: string[]) => Promise<boolean>
       unstage: (cwd: string, files: string[]) => Promise<boolean>
@@ -71,6 +81,13 @@ interface Window {
       diff: (cwd: string, file: string) => Promise<string>
       discard: (cwd: string, file: string) => Promise<boolean>
       log: (cwd: string, count?: number) => Promise<{ hash: string; shortHash: string; author: string; date: string; message: string }[]>
+      showCommitFiles: (cwd: string, hash: string) => Promise<{ status: string; file: string }[]>
+      diffCommitFile: (cwd: string, hash: string, file: string) => Promise<string>
+      diffStaged: (cwd: string, file: string) => Promise<string>
+      showFile: (cwd: string, ref: string, file: string) => Promise<string>
+      pull: (cwd: string) => Promise<{ success: boolean; output: string }>
+      push: (cwd: string) => Promise<{ success: boolean; output: string }>
+      fetch: (cwd: string) => Promise<{ success: boolean; output: string }>
     }
     search: {
       files: (cwd: string, query: string, options: {

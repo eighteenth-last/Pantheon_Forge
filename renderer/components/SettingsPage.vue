@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useSettingsStore, type ModelSetting } from '../stores/settings'
+import { useSettingsStore, type ModelSetting, type SkillItem, type McpServerItem, BUILTIN_SKILLS, BUILTIN_MCP_SERVERS, BUILTIN_RULES } from '../stores/settings'
 import { useChatStore } from '../stores/chat'
 
 const settings = useSettingsStore()
@@ -13,6 +13,7 @@ const sections = [
   { id: 'general', label: '通用', icon: 'fa-solid fa-gear' },
   { id: 'editor', label: '编辑器', icon: 'fa-solid fa-code' },
   { id: 'models', label: '模型', icon: 'fa-solid fa-brain' },
+  { id: 'agent', label: 'Agent', icon: 'fa-solid fa-robot' },
   { id: 'terminal', label: '终端', icon: 'fa-solid fa-terminal' },
   { id: 'appearance', label: '外观', icon: 'fa-solid fa-palette' },
   { id: 'shortcuts', label: '快捷键', icon: 'fa-solid fa-keyboard' },
@@ -102,6 +103,39 @@ function maskKey(key: string): string {
 }
 
 onMounted(() => settings.loadModels())
+
+// ---- Agent settings ----
+const newRule = ref('')
+const newSkill = ref<Partial<SkillItem>>({ name: '', slug: '', enabled: true })
+const newMcp = ref<Partial<McpServerItem>>({ name: '', command: '', args: [], enabled: true })
+const newMcpArgs = ref('')
+const showAddSkill = ref(false)
+const showAddMcp = ref(false)
+
+function addUserRule() {
+  if (!newRule.value.trim()) return
+  s.value.userRules.push(newRule.value.trim())
+  newRule.value = ''
+}
+function removeUserRule(i: number) { s.value.userRules.splice(i, 1) }
+
+function addUserSkill() {
+  if (!newSkill.value.name || !newSkill.value.slug) { showToast('请填写完整', 'error'); return }
+  s.value.userSkills.push({ ...newSkill.value, enabled: true } as SkillItem)
+  newSkill.value = { name: '', slug: '', enabled: true }
+  showAddSkill.value = false
+}
+function removeUserSkill(i: number) { s.value.userSkills.splice(i, 1) }
+
+function addUserMcp() {
+  if (!newMcp.value.name || !newMcp.value.command) { showToast('请填写名称和命令', 'error'); return }
+  const args = newMcpArgs.value.split(/\s+/).filter(Boolean)
+  s.value.userMcpServers.push({ ...newMcp.value, args, enabled: true } as McpServerItem)
+  newMcp.value = { name: '', command: '', args: [], enabled: true }
+  newMcpArgs.value = ''
+  showAddMcp.value = false
+}
+function removeUserMcp(i: number) { s.value.userMcpServers.splice(i, 1) }
 
 // Shortcuts data
 const shortcuts = [
@@ -426,6 +460,110 @@ const shortcuts = [
                   </div>
                 </div>
               </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== Agent ========== -->
+        <div v-if="activeSection === 'agent'">
+          <h1 class="text-xl font-semibold text-white mb-6">Agent 配置</h1>
+
+          <!-- Rules -->
+          <div class="settings-group">
+            <h3 class="settings-group-title">规则 (Rules)</h3>
+            <p class="text-[11px] text-[#52525b] mb-3">Agent 在编写代码时必须遵守的规则</p>
+            <!-- 内置规则 -->
+            <div v-for="(rule, i) in BUILTIN_RULES" :key="'br-'+i" class="flex items-center gap-2 px-3 py-2 border-b border-[#1e1e22]">
+              <span class="text-[10px] text-[#3b82f6] bg-[#3b82f6]/10 px-1.5 py-0.5 rounded shrink-0">内置</span>
+              <span class="text-[13px] text-[#a1a1aa] flex-1">{{ rule }}</span>
+            </div>
+            <!-- 用户规则 -->
+            <div v-for="(rule, i) in s.userRules" :key="'ur-'+i" class="flex items-center gap-2 px-3 py-2 border-b border-[#1e1e22]">
+              <span class="text-[10px] text-[#22c55e] bg-[#22c55e]/10 px-1.5 py-0.5 rounded shrink-0">自定义</span>
+              <span class="text-[13px] text-[#e4e4e7] flex-1">{{ rule }}</span>
+              <i class="fa-solid fa-trash text-[10px] text-[#52525b] hover:text-red-400 cursor-pointer" @click="removeUserRule(i)"></i>
+            </div>
+            <!-- 添加规则 -->
+            <div class="flex gap-2 mt-3">
+              <input v-model="newRule" class="setting-input flex-1" placeholder="输入新规则..." @keydown.enter="addUserRule()" />
+              <button class="px-4 py-1.5 bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs rounded-md" @click="addUserRule()">添加</button>
+            </div>
+          </div>
+
+          <!-- Skills -->
+          <div class="settings-group">
+            <h3 class="settings-group-title">Skills</h3>
+            <p class="text-[11px] text-[#52525b] mb-3">为 Agent 加载的编程技能包</p>
+            <!-- 内置 Skills -->
+            <div v-for="skill in BUILTIN_SKILLS" :key="'bs-'+skill.slug" class="flex items-center gap-2 px-3 py-2 border-b border-[#1e1e22]">
+              <span class="text-[10px] text-[#3b82f6] bg-[#3b82f6]/10 px-1.5 py-0.5 rounded shrink-0">内置</span>
+              <div class="flex-1 min-w-0">
+                <div class="text-[13px] text-[#a1a1aa]">{{ skill.name }}</div>
+                <div class="text-[10px] text-[#52525b] truncate">{{ skill.slug }}</div>
+              </div>
+            </div>
+            <!-- 用户 Skills -->
+            <div v-for="(skill, i) in s.userSkills" :key="'us-'+i" class="flex items-center gap-2 px-3 py-2 border-b border-[#1e1e22]">
+              <span class="text-[10px] text-[#22c55e] bg-[#22c55e]/10 px-1.5 py-0.5 rounded shrink-0">自定义</span>
+              <div class="flex-1 min-w-0">
+                <div class="text-[13px] text-[#e4e4e7]">{{ skill.name }}</div>
+                <div class="text-[10px] text-[#52525b] truncate">{{ skill.slug }}</div>
+              </div>
+              <label class="toggle"><input type="checkbox" v-model="skill.enabled" /><span class="toggle-slider"></span></label>
+              <i class="fa-solid fa-trash text-[10px] text-[#52525b] hover:text-red-400 cursor-pointer" @click="removeUserSkill(i)"></i>
+            </div>
+            <!-- 添加 Skill -->
+            <div v-if="!showAddSkill" class="mt-3">
+              <button class="px-4 py-1.5 bg-[#27272a] hover:bg-[#3f3f46] text-[#a1a1aa] text-xs rounded-md border border-[#2e2e32]" @click="showAddSkill = true">+ 添加 Skill</button>
+            </div>
+            <div v-else class="bg-[#1a1a1e] rounded-lg p-4 border border-[#3b82f6]/30 space-y-3 mt-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="text-[11px] text-[#71717a] block mb-1">名称</label><input v-model="newSkill.name" class="setting-input w-full" placeholder="My Skill" /></div>
+                <div><label class="text-[11px] text-[#71717a] block mb-1">Slug 路径</label><input v-model="newSkill.slug" class="setting-input w-full" placeholder="community/my-skill" /></div>
+              </div>
+              <div class="flex gap-2">
+                <button class="px-4 py-1.5 bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs rounded-md" @click="addUserSkill()">保存</button>
+                <button class="px-4 py-1.5 bg-[#27272a] hover:bg-[#3f3f46] text-[#a1a1aa] text-xs rounded-md" @click="showAddSkill = false">取消</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- MCP Servers -->
+          <div class="settings-group">
+            <h3 class="settings-group-title">MCP 服务器</h3>
+            <p class="text-[11px] text-[#52525b] mb-3">Model Context Protocol 服务器配置</p>
+            <!-- 内置 MCP -->
+            <div v-for="mcp in BUILTIN_MCP_SERVERS" :key="'bm-'+mcp.name" class="flex items-center gap-2 px-3 py-2 border-b border-[#1e1e22]">
+              <span class="text-[10px] text-[#3b82f6] bg-[#3b82f6]/10 px-1.5 py-0.5 rounded shrink-0">内置</span>
+              <div class="flex-1 min-w-0">
+                <div class="text-[13px] text-[#a1a1aa]">{{ mcp.name }}</div>
+                <div class="text-[10px] text-[#52525b] truncate">{{ mcp.command }} {{ mcp.args.join(' ') }}</div>
+              </div>
+            </div>
+            <!-- 用户 MCP -->
+            <div v-for="(mcp, i) in s.userMcpServers" :key="'um-'+i" class="flex items-center gap-2 px-3 py-2 border-b border-[#1e1e22]">
+              <span class="text-[10px] text-[#22c55e] bg-[#22c55e]/10 px-1.5 py-0.5 rounded shrink-0">自定义</span>
+              <div class="flex-1 min-w-0">
+                <div class="text-[13px] text-[#e4e4e7]">{{ mcp.name }}</div>
+                <div class="text-[10px] text-[#52525b] truncate">{{ mcp.command }} {{ mcp.args.join(' ') }}</div>
+              </div>
+              <label class="toggle"><input type="checkbox" v-model="mcp.enabled" /><span class="toggle-slider"></span></label>
+              <i class="fa-solid fa-trash text-[10px] text-[#52525b] hover:text-red-400 cursor-pointer" @click="removeUserMcp(i)"></i>
+            </div>
+            <!-- 添加 MCP -->
+            <div v-if="!showAddMcp" class="mt-3">
+              <button class="px-4 py-1.5 bg-[#27272a] hover:bg-[#3f3f46] text-[#a1a1aa] text-xs rounded-md border border-[#2e2e32]" @click="showAddMcp = true">+ 添加 MCP 服务器</button>
+            </div>
+            <div v-else class="bg-[#1a1a1e] rounded-lg p-4 border border-[#3b82f6]/30 space-y-3 mt-3">
+              <div class="grid grid-cols-3 gap-3">
+                <div><label class="text-[11px] text-[#71717a] block mb-1">名称</label><input v-model="newMcp.name" class="setting-input w-full" placeholder="My Server" /></div>
+                <div><label class="text-[11px] text-[#71717a] block mb-1">命令</label><input v-model="newMcp.command" class="setting-input w-full" placeholder="npx" /></div>
+                <div><label class="text-[11px] text-[#71717a] block mb-1">参数 (空格分隔)</label><input v-model="newMcpArgs" class="setting-input w-full" placeholder="-y package@latest" /></div>
+              </div>
+              <div class="flex gap-2">
+                <button class="px-4 py-1.5 bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs rounded-md" @click="addUserMcp()">保存</button>
+                <button class="px-4 py-1.5 bg-[#27272a] hover:bg-[#3f3f46] text-[#a1a1aa] text-xs rounded-md" @click="showAddMcp = false">取消</button>
+              </div>
             </div>
           </div>
         </div>
