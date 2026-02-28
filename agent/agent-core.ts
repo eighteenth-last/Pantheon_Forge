@@ -56,12 +56,11 @@ const BASE_SYSTEM_PROMPT = `你是 Pantheon Forge 的 AI 编程助手。你的�
 3. 向用户报告结果
 
 ## 重要约束
-- 禁止重复调用相同工具和相同参数。如果一个工具已经返回了结果，直接使用该结果，不要再次调用。
-- 每次工具调用都必须有明确目的，不要盲目探索。
-- 如果用户的问题可以直接回答（如简单问候、知识问答），不要调用任何工具，直接回复。
-- 收集到足够信息后立即给出最终回答，不要继续调用工具。
-- 当用户要求修改某个已知文件时，直接操作该文件，不要重新搜索或列出目录。
-- write_file 和 edit_file 的内容必须完整、可用，禁止输出半成品代码。
+- **禁止无效重复**：禁止对完全相同的路径和参数重复调用工具。已知结果直接使用，不要重新获取。
+- **任务驱动型探索是必须的**：当用户要求"阅读项目"、"分析项目"、"继续开发"、"找出未完成部分"等任务时，你**必须系统性地遍历整个项目目录**，逐层 list_dir、读取关键文件、阅读所有 MD 文档，直到收集到完成任务所需的全部信息，**不得提前停止**。
+- **简单问答不调工具**：如果用户提问可以直接回答（问候、知识问答），不要调用任何工具，直接回复。
+- **修改已知文件时直接操作**：不要重新搜索或列出目录。
+- **代码必须完整**：write_file 和 edit_file 的内容必须完整可用，禁止省略、截断或用注释代替实际代码。
 
 请用中文回复。你可以在一次回复中调用多个独立的工具，它们会被并行执行。`
 
@@ -75,13 +74,14 @@ export interface AgentConfig {
 function buildSystemPrompt(config?: AgentConfig, skillRegistry?: SkillRegistryEntry[]): string {
   let prompt = BASE_SYSTEM_PROMPT
 
-  // Rules：结构化格式，带编号
+  // 用户规则：最高优先级，覆盖基础约束
   if (config?.rules && config.rules.length > 0) {
-    prompt += '\n\n## 工作规则（必须严格遵守）\n'
-    prompt += '以下规则是用户设定的强制要求，你必须在每次操作中遵守：\n'
+    prompt += '\n\n## ⚡ 用户工作规则（最高优先级，覆盖上述所有基础约束）\n'
+    prompt += '> 以下规则由用户明确设定，优先级高于上方"重要约束"中的任何条目。遇到冲突时，用户规则优先。\n\n'
     config.rules.forEach((r, i) => {
-      prompt += `规则 ${i + 1}: ${r}\n`
+      prompt += `**规则 ${i + 1}**: ${r}\n`
     })
+    prompt += '\n你必须在每一步操作前，主动对照以上规则检查自己的行为。\n'
   }
 
   // Skills：仅注入清单摘要，按需通过 load_skill 工具加载详细内容
@@ -98,10 +98,11 @@ function buildSystemPrompt(config?: AgentConfig, skillRegistry?: SkillRegistryEn
   return prompt
 }
 
-/** 构建规则回顾提示（工具调用后附加） */
+/** 构建规则回顾提示（工具调用后附加，强制 Agent 对照规则） */
 function buildRulesReminder(rules: string[]): string {
   if (rules.length === 0) return ''
-  return '\n[规则回顾] 请确保你的操作符合以下规则: ' + rules.map((r, i) => `(${i + 1}) ${r}`).join(' ')
+  const ruleList = rules.map((r, i) => `  (${i + 1}) ${r}`).join('\n')
+  return `\n\n[⚡ 用户规则回顾 - 最高优先级] 在执行下一步之前，请确认你的行为符合以下所有规则：\n${ruleList}\n`
 }
 
 export class AgentCore {
@@ -134,6 +135,11 @@ export class AgentCore {
     // 配置变更时重置，下次 run 时重新加载
     this.skillRegistry = []
     this.mcpConnected = false
+  }
+
+  /** 返回当前实际的上下文窗口大小（token 数），供前端动态显示 */
+  getMaxContextTokens(): number {
+    return this.memory.getMaxTokens()
   }
 
   stop() {
@@ -193,7 +199,7 @@ export class AgentCore {
         const msg: Message = { role: m.role as Message['role'], content: m.content }
         if (m.tool_call_id) msg.tool_call_id = m.tool_call_id
         if (m.tool_calls) {
-          try { msg.tool_calls = JSON.parse(m.tool_calls) } catch {}
+          try { msg.tool_calls = JSON.parse(m.tool_calls) } catch { }
         }
         return msg
       })
@@ -357,6 +363,30 @@ export class AgentCore {
             content: toolResult + buildRulesReminder(rules),
             tool_call_id: tc.id
           })
+        }
+
+        // ===== 循环内 AI 压缩：每步工具结果后检查使用率 =====
+        // run() 入口只压缩一次，工具结果不断积累后需要再次检查
+        if (this.memory.needsCompression(messages)) {
+          const usagePct = (this.memory.getUsageRatio(messages) * 100).toFixed(0)
+          console.log(`[AgentCore] Step ${steps} 后上下文使用率 ${usagePct}%，触发循环内记忆压缩...`)
+          yield { type: 'text', content: `\n🧠 上下文已用 ${usagePct}%，正在压缩记忆...\n` }
+          try {
+            const { adapter, config } = this.modelRouter.getActiveAdapter(modelId)
+            const { summary } = await this.memory.compressWithModel(messages, memorySummary, adapter, config)
+            memorySummary = summary
+            this.db.saveSessionMemory(sessionId, summary)
+            // 用压缩后的消息列表替换当前 messages
+            const compressed = this.memory.prepareMessages(
+              [messages[0], ...messages.filter(m => m.role !== 'system')],
+              summary
+            )
+            messages.length = 0
+            messages.push(...compressed)
+            console.log(`[AgentCore] 循环内压缩完成，剩余 ${messages.length} 条消息`)
+          } catch (err) {
+            console.error('[AgentCore] 循环内压缩失败:', err)
+          }
         }
 
         continue

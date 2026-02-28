@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onBeforeUnmount } from 'vue'
+import { ref, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useProjectStore } from '../stores/project'
 import { useSettingsStore } from '../stores/settings'
@@ -20,8 +20,8 @@ const pendingImages = ref<string[]>([])
 /** 图片预览 URL */
 const previewImage = ref<string | null>(null)
 
-/** 上下文容量估算（与 AgentMemory 同算法：1 token ≈ 3 字符） */
-const MAX_CONTEXT_TOKENS = 100000
+/** 上下文容量 —— 从主进程动态读取，与 memory.ts 的 CONTEXT_WINDOW 保持同步 */
+const MAX_CONTEXT_TOKENS = ref(256000)
 function estimateContextUsage(): { used: number; total: number; ratio: number } {
   let totalChars = 0
   for (const msg of chat.messages) {
@@ -35,8 +35,8 @@ function estimateContextUsage(): { used: number; total: number; ratio: number } 
     if (msg.images) totalChars += msg.images.length * 255
   }
   const used = Math.ceil(totalChars / 3)
-  const ratio = Math.min(used / MAX_CONTEXT_TOKENS, 1)
-  return { used, total: MAX_CONTEXT_TOKENS, ratio }
+  const ratio = Math.min(used / MAX_CONTEXT_TOKENS.value, 1)
+  return { used, total: MAX_CONTEXT_TOKENS.value, ratio }
 }
 function contextColor(): string {
   const { ratio } = estimateContextUsage()
@@ -123,14 +123,20 @@ function isThinkingOpen(msgId: number, msg: any): boolean {
 }
 
 async function send() {
-  if (!inputText.value.trim() || chat.isStreaming) return
+  if ((!inputText.value.trim() && pendingFiles.value.length === 0) || chat.isStreaming) return
   if (!chat.sessionId && project.projectPath) {
     await chat.createSession(project.projectPath)
   }
-  const msg = inputText.value
+  // 将拖拽的文件路径附加到消息末尾，供 Agent 直接识别
+  let msg = inputText.value
+  if (pendingFiles.value.length > 0) {
+    const refs = pendingFiles.value.map(f => f.path).join('\n')
+    msg = msg ? `${msg}\n\n引用文件:\n${refs}` : `引用文件:\n${refs}`
+  }
   const images = pendingImages.value.length > 0 ? [...pendingImages.value] : undefined
   inputText.value = ''
   pendingImages.value = []
+  pendingFiles.value = []
   await chat.sendMessage(msg, project.projectPath, images)
 }
 function handleKeydown(e: KeyboardEvent) {
@@ -160,6 +166,35 @@ function handlePaste(e: ClipboardEvent) {
 /** 移除待发送的图片 */
 function removePendingImage(index: number) {
   pendingImages.value.splice(index, 1)
+}
+
+/** 拖拽引用文件 chip（Cursor 风格） */
+interface PendingFile { name: string; path: string; isDir: boolean }
+const pendingFiles = ref<PendingFile[]>([])
+const isDragOver = ref(false)
+const chatInputEl = ref<HTMLTextAreaElement>()
+
+function removePendingFile(index: number) {
+  pendingFiles.value.splice(index, 1)
+}
+
+/** 文件引用上限 */
+const MAX_PENDING_FILES = 5
+
+function handleDropToChat(ev: DragEvent) {
+  ev.preventDefault()
+  isDragOver.value = false
+  const path = ev.dataTransfer?.getData('application/pantheon-path') ||
+                ev.dataTransfer?.getData('text/plain')
+  if (!path) return
+  if (pendingFiles.value.length >= MAX_PENDING_FILES) return // 超出上限忽略
+  const isDir = ev.dataTransfer?.getData('application/pantheon-type') === 'directory'
+  const name = path.replace(/\\/g, '/').split('/').pop() || path
+  // 去重
+  if (!pendingFiles.value.some(f => f.path === path)) {
+    pendingFiles.value.push({ name, path, isDir })
+  }
+  nextTick(() => chatInputEl.value?.focus())
 }
 
 function showImagePreview(url: string) {
@@ -289,6 +324,13 @@ watch(
     }, 120)
   }
 )
+
+onMounted(async () => {
+  try {
+    const res = await (window as any).api.agent.getContextWindow()
+    if (res?.maxTokens) MAX_CONTEXT_TOKENS.value = res.maxTokens
+  } catch {}
+})
 
 onBeforeUnmount(() => {
   if (scrollTimer) clearTimeout(scrollTimer)
@@ -438,7 +480,15 @@ onBeforeUnmount(() => {
 
     <!-- Input -->
     <div class="p-4 border-t border-[#2e2e32] bg-[#18181c] shrink-0">
-      <div class="relative bg-[#27272a] border border-[#2e2e32] rounded-xl focus-within:border-[#3b82f6]/50 focus-within:ring-1 focus-within:ring-[#3b82f6]/20 transition-all flex flex-col shadow-sm">
+      <div
+        class="relative bg-[#27272a] border rounded-xl transition-all flex flex-col shadow-sm"
+        :class="isDragOver
+          ? 'border-blue-400/70 ring-2 ring-blue-400/30 bg-blue-500/5'
+          : 'border-[#2e2e32] focus-within:border-[#3b82f6]/50 focus-within:ring-1 focus-within:ring-[#3b82f6]/20'"
+        @dragover.prevent="isDragOver = true"
+        @dragleave="isDragOver = false"
+        @drop="handleDropToChat"
+      >
         
         <!-- 粘贴图片预览 -->
         <div v-if="pendingImages.length > 0" class="flex gap-2 px-3 pt-3 flex-wrap animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -454,11 +504,29 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
+
+        <!-- 拖拽文件引用 chip（Cursor 风格） -->
+        <div v-if="pendingFiles.length > 0" class="flex gap-1.5 px-3 pt-2.5 flex-wrap">
+          <div
+            v-for="(f, idx) in pendingFiles" :key="f.path"
+            class="group/chip flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#1e1e2e] border border-[#3b3b52] text-[11px] text-[#c4c4d4] hover:border-[#5c5c8a] transition-colors cursor-default select-none"
+            :title="f.path"
+          >
+            <i :class="f.isDir ? 'fa-solid fa-folder text-blue-400' : 'fa-solid fa-file-code text-[#7c7ca8]'" class="text-[9px] shrink-0"></i>
+            <span class="max-w-[160px] truncate">{{ f.name }}</span>
+            <i
+              class="fa-solid fa-xmark text-[9px] text-[#52525b] hover:text-red-400 cursor-pointer ml-0.5 opacity-0 group-hover/chip:opacity-100 transition-opacity"
+              @click.stop="removePendingFile(idx)"
+            ></i>
+          </div>
+        </div>
+
         
         <textarea
+          ref="chatInputEl"
           v-model="inputText"
           class="w-full bg-transparent border-none text-sm text-white focus:outline-none focus:ring-0 resize-none h-24 placeholder-[#52525b] code-font p-3 leading-relaxed"
-          placeholder="输入指令编辑代码、运行命令或解释... (Enter 发送)"
+          :placeholder="isDragOver ? '📂 释放鼠标以引用文件路径...' : '输入指令编辑代码、运行命令或解释... (Enter 发送)'"
           @keydown="handleKeydown"
           @paste="handlePaste"
         ></textarea>

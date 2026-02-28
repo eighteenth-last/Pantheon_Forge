@@ -161,6 +161,14 @@ function getIcon(entry: FileEntry): string {
         ? 'bg-[#094771] text-white'
         : 'text-[#a1a1aa] hover:bg-[#27272a] hover:text-white'"
       :style="{ paddingLeft: (depth * 12 + 8) + 'px' }"
+      draggable="true"
+      @dragstart.stop="(ev: DragEvent) => {
+        if (!ev.dataTransfer) return
+        ev.dataTransfer.effectAllowed = 'copy'
+        ev.dataTransfer.setData('text/plain', entry.path)
+        ev.dataTransfer.setData('application/pantheon-path', entry.path)
+        ev.dataTransfer.setData('application/pantheon-type', entry.isDirectory ? 'directory' : 'file')
+      }"
       @click.stop="emit('click', entry)"
       @dblclick.stop="emit('dblclick', entry)"
       @contextmenu="onRightClick"

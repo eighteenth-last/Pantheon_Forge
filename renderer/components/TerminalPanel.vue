@@ -140,6 +140,22 @@ function closePanel() {
   emit('close')
 }
 
+/** 拖拽文件到终端：插入绝对路径（带引号） */
+const isTermDragOver = ref(false)
+
+function handleDropToTerminal(ev: DragEvent) {
+  ev.preventDefault()
+  isTermDragOver.value = false
+  const path = ev.dataTransfer?.getData('application/pantheon-path') ||
+                ev.dataTransfer?.getData('text/plain')
+  if (!path || terminals.length === 0) return
+  const inst = terminals[activeTermIdx.value]
+  if (!inst) return
+  // 路径含空格时加引号
+  const quoted = path.includes(' ') ? `"${path}"` : path
+  window.api.terminal.write(inst.id, quoted)
+}
+
 // ---- Global listeners ----
 function setupGlobalListeners() {
   unsubData = window.api.terminal.onData(({ id, data }) => {
@@ -261,7 +277,15 @@ onUnmounted(() => {
     </div>
 
     <!-- Terminal container -->
-    <div v-show="activeTab === 'terminal'" ref="termContainerEl" class="flex-1 min-h-0 px-1 py-1 relative"></div>
+    <div
+      v-show="activeTab === 'terminal'"
+      ref="termContainerEl"
+      class="flex-1 min-h-0 px-1 py-1 relative transition-all"
+      :class="isTermDragOver ? 'ring-2 ring-blue-400/40 ring-inset bg-blue-500/5' : ''"
+      @dragover.prevent="isTermDragOver = true"
+      @dragleave="isTermDragOver = false"
+      @drop="handleDropToTerminal"
+    ></div>
 
     <!-- Output placeholder -->
     <div v-show="activeTab === 'output'" class="flex-1 p-3 text-xs text-[#52525b] flex items-center justify-center">暂无输出</div>

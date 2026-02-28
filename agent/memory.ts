@@ -17,7 +17,7 @@
 import type { Message } from '../models/base-adapter'
 import type { ModelAdapter, ModelConfig } from '../models/base-adapter'
 
-const CONTEXT_WINDOW = 100000 // 100K tokens
+const CONTEXT_WINDOW = 256000 // 256K tokens
 const COMPRESS_THRESHOLD = 0.80 // 已用超过 80% 时触发压缩
 const COMPRESS_TARGET = 0.50 // 压缩后目标：保留 50% 容量给新对话
 

@@ -1,3 +1,11 @@
+// ===== Windows 控制台 UTF-8 编码修复（防止中文乱码）=====
+if (process.platform === 'win32') {
+  // 强制 stdout / stderr 以 UTF-8 输出，解决 GBK 乱码
+  if (process.stdout.isTTY) (process.stdout as any)._handle?.setBlocking?.(true)
+  try { (process.stdout as any).setDefaultEncoding?.('utf8') } catch { }
+  try { (process.stderr as any).setDefaultEncoding?.('utf8') } catch { }
+}
+
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { AgentCore } from '../agent/agent-core'
@@ -247,6 +255,17 @@ function startFileServer(): Promise<void> {
   })
 }
 
+// 禁用 Autofill，消除 DevTools "Autofill.enable wasn't found" 报错
+app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication')
+
+// ===== 用 electron.net.fetch 替换全局 fetch =====
+// Node.js 原生 fetch 不走系统代理/VPN，electron.net.fetch 基于 Chromium 网络栈，
+// 自动识别系统代理设置，解决挂 VPN 后 "fetch failed" 的问题
+import('electron').then(({ net }) => {
+  (global as any).fetch = net.fetch.bind(net)
+  console.log('[Main] 已启用 electron.net.fetch（代理感知模式）')
+})
+
 app.whenReady().then(async () => {
   database = new Database()
   const modelRouter = new ModelRouter(database)
@@ -279,7 +298,7 @@ app.on('window-all-closed', () => {
   database?.close()
   gitWorker?.terminate()
   searchWorker?.terminate()
-  agentCore?.shutdown().catch(() => {})
+  agentCore?.shutdown().catch(() => { })
   if (process.platform !== 'darwin') app.quit()
 })
 
@@ -339,6 +358,10 @@ function registerIpcHandlers(toolExecutor: ToolExecutor) {
   ipcMain.handle('agent:stop', () => {
     agentCore.stop()
     return { success: true }
+  })
+
+  ipcMain.handle('agent:getContextWindow', () => {
+    return { maxTokens: agentCore.getMaxContextTokens() }
   })
 
   ipcMain.handle('agent:setConfig', (_e, config: any) => {
@@ -453,7 +476,7 @@ function registerIpcHandlers(toolExecutor: ToolExecutor) {
   })
 
   ipcMain.handle('terminal:resize', (_e, id: number, cols: number, rows: number) => {
-    try { ptyMap.get(id)?.resize(cols, rows) } catch {}
+    try { ptyMap.get(id)?.resize(cols, rows) } catch { }
   })
 
   ipcMain.handle('terminal:kill', (_e, id: number) => {

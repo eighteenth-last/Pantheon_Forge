@@ -264,11 +264,23 @@ export class ToolExecutor {
         cwd: this.projectRoot,
         env: { ...process.env, PYTHONIOENCODING: 'utf-8', LANG: 'zh_CN.UTF-8' }
       })
-      let output = ''
-      proc.stdout?.on('data', d => { output += d.toString('utf-8') })
-      proc.stderr?.on('data', d => { output += d.toString('utf-8') })
-      proc.on('close', code => resolve(output || `进程退出，代码: ${code}`))
-      setTimeout(() => { proc.kill(); resolve(output + '\n⚠️ 命令执行超时(30s)') }, 30000)
+      let stdout = ''
+      let stderr = ''
+      proc.stdout?.on('data', d => { stdout += d.toString('utf-8') })
+      // stderr 单独收集并标注，便于 Agent 识别错误
+      proc.stderr?.on('data', d => { stderr += d.toString('utf-8') })
+      proc.on('close', code => {
+        let result = stdout
+        if (stderr.trim()) {
+          result += (result ? '\n' : '') + `[STDERR]\n${stderr}`
+        }
+        if (!result.trim()) result = `进程退出，代码: ${code}`
+        if (code !== 0 && code !== null) {
+          result += `\n⚠️ 命令以非零状态退出 (exit code: ${code})`
+        }
+        resolve(result)
+      })
+      setTimeout(() => { proc.kill(); resolve((stdout || '') + (stderr ? `\n[STDERR]\n${stderr}` : '') + '\n⚠️ 命令执行超时(30s)') }, 30000)
     })
   }
 

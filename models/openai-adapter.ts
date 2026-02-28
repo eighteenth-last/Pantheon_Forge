@@ -43,7 +43,9 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
       model: config.modelName,
       messages: apiMessages,
       stream: true,
-      max_tokens: config.maxTokens ?? 4096,
+      // 推理模型（DeepSeek-R1/Qwen-Thinking等）thinking trace 会消耗大量 token
+      // 默认 16384 避免 thinking 吃完 token 导致 tool_call 被截断（finish_reason: length）
+      max_tokens: config.maxTokens ?? 16384,
       temperature: config.temperature ?? 0.7
     }
 
@@ -89,9 +91,42 @@ export class OpenAICompatibleAdapter implements ModelAdapter {
     // 支持多个并行工具调用
     const toolCalls = new Map<number, { id: string; name: string; args: string }>()
 
+    // 流式读取超时（60s 无数据视为卡死）
+    const STREAM_TIMEOUT_MS = 60000
+    let streamTimer: ReturnType<typeof setTimeout> | null = null
+    let cancelReader: (() => void) | null = null
+
+    const resetTimer = () => {
+      if (streamTimer) clearTimeout(streamTimer)
+      streamTimer = setTimeout(() => {
+        console.warn('[OpenAI] 流式读取超时（60s无数据），强制中断')
+        cancelReader?.()
+      }, STREAM_TIMEOUT_MS)
+    }
+
+    // 将 reader.read() 包一层：超时时 cancel stream
+    const readWithTimeout = (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+      return new Promise((resolve, reject) => {
+        cancelReader = () => {
+          reader.cancel().catch(() => { })
+          reject(new Error('流式读取超时（60s）'))
+        }
+        reader.read().then(resolve, reject)
+      })
+    }
+
+    resetTimer()
     while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+      let done: boolean, value: Uint8Array | undefined
+      try {
+        ; ({ done, value } = await readWithTimeout())
+      } catch (streamErr: any) {
+        if (streamTimer) clearTimeout(streamTimer)
+        yield { type: 'error', error: streamErr.message || '流式读取超时' }
+        return
+      }
+      resetTimer()
+      if (done) { if (streamTimer) clearTimeout(streamTimer); break }
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')

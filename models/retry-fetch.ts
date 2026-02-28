@@ -1,6 +1,6 @@
 /**
  * 带 429 限流自动重试的 fetch 封装
- * 支持指数退避 + Retry-After 头解析
+ * 支持指数退避 + Retry-After 头解析 + 网络层错误重试（VPN 切换场景）
  */
 
 export interface RetryFetchOptions {
@@ -11,7 +11,7 @@ export interface RetryFetchOptions {
 }
 
 /**
- * 发起 HTTP 请求，遇到 429 自动等待重试
+ * 发起 HTTP 请求，遇到 429 或网络错误自动等待重试
  * @returns Response 对象（保证 status !== 429）
  */
 export async function retryFetch(
@@ -24,7 +24,22 @@ export async function retryFetch(
   const maxDelay = options?.maxDelayMs ?? 60000
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const response = await fetch(url, init)
+    let response: Response
+
+    try {
+      response = await fetch(url, init)
+    } catch (err: any) {
+      // 网络层错误（fetch failed / ECONNREFUSED / ENOTFOUND 等）
+      // 常见于 VPN 切换瞬间，自动重试
+      if (attempt >= maxRetries) throw err
+
+      const delayMs = Math.min(baseDelay * Math.pow(2, attempt), maxDelay) + Math.random() * 1000
+      const errMsg = err?.cause?.code || err?.message || String(err)
+      console.warn(`[RetryFetch] 网络错误 (${errMsg})，第 ${attempt + 1} 次重试，等待 ${Math.round(delayMs / 1000)}s...`)
+      options?.onRetry?.(attempt + 1, delayMs)
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+      continue
+    }
 
     if (response.status !== 429) {
       return response

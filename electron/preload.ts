@@ -26,6 +26,7 @@ const api = {
       ipcRenderer.invoke('agent:chat', sessionId, message, projectPath, modelId, images),
     stop: () => ipcRenderer.invoke('agent:stop'),
     setConfig: (config: any) => ipcRenderer.invoke('agent:setConfig', config),
+    getContextWindow: () => ipcRenderer.invoke('agent:getContextWindow'),
     onChunk: (cb: (data: any) => void) => {
       // 支持批量 chunks（新协议）
       const batchHandler = (_e: any, batch: any[]) => {

@@ -1,12 +1,17 @@
 /**
  * ServiceManager - 管理长时间运行的服务进程
- * 
+ *
  * 在主进程中运行，通过 node-pty 创建终端进程，
  * 监听输出匹配成功/失败模式，供 Agent 工具调用。
+ *
+ * 改进：
+ * - 同名服务已运行时优先复用终端，不重复 kill+重建
+ * - 错误 pattern 涵盖 npm error / Error: / FAILED / Exception
+ * - buffer 扩大至 200 行，check_service 返回最近 100 行
  */
 import type { BrowserWindow } from 'electron'
 
-const PTY_BUFFER_MAX_LINES = 200
+const PTY_BUFFER_MAX_LINES = 500
 
 export interface ServiceInfo {
   serviceId: string
@@ -43,7 +48,7 @@ export class ServiceManager {
     while (buf.length > PTY_BUFFER_MAX_LINES) buf.shift()
   }
 
-  getBuffer(id: number, lines = 50): string {
+  getBuffer(id: number, lines = 100): string {
     const buf = this.outputBuffer.get(id) || []
     return buf.slice(-lines).join('\n')
   }
@@ -54,8 +59,22 @@ export class ServiceManager {
     cwd: string,
     options?: { successPattern?: string; errorPattern?: string; timeoutMs?: number }
   ): Promise<{ success: boolean; status: string; termId: number; output: string }> {
-    // 如果已有同名服务在运行，先停掉
+    // ===== 终端复用逻辑 =====
+    // 若同名服务已在运行（pty 进程存活），直接在其终端内执行命令，不重建终端
     const existing = this.serviceMap.get(serviceId)
+    if (existing && this.ptyMap.has(existing.termId) && existing.status === 'running') {
+      console.log(`[ServiceManager] 复用已有终端 ${existing.termId} (${serviceId})`)
+      const proc = this.ptyMap.get(existing.termId)
+      // 清空旧 buffer，准备接收新输出
+      this.outputBuffer.set(existing.termId, [])
+      existing.command = command
+      existing.status = 'starting'
+      existing.startTime = Date.now()
+      proc.write(command + '\r')
+      return this._waitForPattern(serviceId, existing.termId, options)
+    }
+
+    // 停掉旧服务（已停止/错误状态）
     if (existing && this.ptyMap.has(existing.termId)) {
       this.ptyMap.get(existing.termId)?.kill()
       this.ptyMap.delete(existing.termId)
@@ -93,22 +112,32 @@ export class ServiceManager {
     })
 
     this.ptyMap.set(id, proc)
-
-    // 发送命令
     proc.write(command + '\r')
 
-    // 通知前端
+    // 通知前端创建了新终端 tab
     win?.webContents.send('service:terminal-created', { id, serviceId, command })
 
-    const successPattern = options?.successPattern || 'Started|Listening|ready|compiled|running on|启动成功'
-    const errorPattern = options?.errorPattern || 'BUILD FAILURE|EADDRINUSE|Cannot find module'
+    return this._waitForPattern(serviceId, id, options)
+  }
+
+  /** 等待成功/失败 pattern 或超时 */
+  private _waitForPattern(
+    serviceId: string,
+    termId: number,
+    options?: { successPattern?: string; errorPattern?: string; timeoutMs?: number }
+  ): Promise<{ success: boolean; status: string; termId: number; output: string }> {
+    // 增强错误 pattern：覆盖 npm error、Java 异常、通用 Error/FAILED
+    const successPattern = options?.successPattern || 'Started|Listening|ready|compiled|running on|启动成功|Server running'
+    const errorPattern = options?.errorPattern ||
+      'BUILD FAILURE|EADDRINUSE|Cannot find module|npm error|npm ERR!|Error:|Exception:|FAILED|SyntaxError|ModuleNotFoundError|error TS'
     const timeoutMs = options?.timeoutMs || 60000
 
     return new Promise((resolve) => {
       let resolved = false
+
       const checkInterval = setInterval(() => {
         if (resolved) return
-        const buf = this.outputBuffer.get(id) || []
+        const buf = this.outputBuffer.get(termId) || []
         const recentOutput = buf.join('\n')
 
         if (successPattern && new RegExp(successPattern, 'i').test(recentOutput)) {
@@ -116,7 +145,7 @@ export class ServiceManager {
           clearInterval(checkInterval)
           const svc = this.serviceMap.get(serviceId)
           if (svc) svc.status = 'running'
-          resolve({ success: true, status: 'running', termId: id, output: buf.slice(-20).join('\n') })
+          resolve({ success: true, status: 'running', termId, output: buf.slice(-50).join('\n') })
           return
         }
 
@@ -125,14 +154,14 @@ export class ServiceManager {
           clearInterval(checkInterval)
           const svc = this.serviceMap.get(serviceId)
           if (svc) svc.status = 'error'
-          resolve({ success: false, status: 'error', termId: id, output: buf.slice(-20).join('\n') })
+          resolve({ success: false, status: 'error', termId, output: buf.slice(-50).join('\n') })
           return
         }
 
-        if (!this.ptyMap.has(id)) {
+        if (!this.ptyMap.has(termId)) {
           resolved = true
           clearInterval(checkInterval)
-          resolve({ success: false, status: 'exited', termId: id, output: buf.slice(-20).join('\n') })
+          resolve({ success: false, status: 'exited', termId, output: buf.slice(-50).join('\n') })
           return
         }
       }, 500)
@@ -142,9 +171,9 @@ export class ServiceManager {
         resolved = true
         clearInterval(checkInterval)
         const svc = this.serviceMap.get(serviceId)
-        const buf = this.outputBuffer.get(id) || []
+        const buf = this.outputBuffer.get(termId) || []
         if (svc && svc.status === 'starting') svc.status = 'running'
-        resolve({ success: true, status: 'timeout_assumed_running', termId: id, output: buf.slice(-20).join('\n') })
+        resolve({ success: true, status: 'timeout_assumed_running', termId, output: buf.slice(-50).join('\n') })
       }, timeoutMs)
     })
   }
@@ -160,7 +189,7 @@ export class ServiceManager {
       termId: svc.termId,
       command: svc.command,
       uptime: Date.now() - svc.startTime,
-      output: buf.slice(-30).join('\n')
+      output: buf.slice(-100).join('\n')  // 返回最近 100 行，覆盖更多错误输出
     }
   }
 
