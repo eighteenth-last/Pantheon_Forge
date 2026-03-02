@@ -62,6 +62,9 @@ onMounted(async () => {
       if (state.projectPath) {
         await project.openProject(state.projectPath)
 
+        // 恢复上次 session（在文件恢复之前先恢复会话，避免空白对话）
+        await chat.restoreLastSession()
+
         // 恢复打开的文件
         for (const f of state.openFiles) {
           try {

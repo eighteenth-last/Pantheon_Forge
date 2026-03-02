@@ -127,7 +127,9 @@ async function send() {
   if (!chat.sessionId && project.projectPath) {
     await chat.createSession(project.projectPath)
   }
-  // 将拖拽的文件路径附加到消息末尾，供 Agent 直接识别
+  // 保存用户输入的原始文字（用于 UI 气泡展示，不含文件路径）
+  const displayContent = inputText.value
+  // 将拖拽的文件路径附加到消息末尾，供 Agent 直接识别（不在 UI 中显示）
   let msg = inputText.value
   if (pendingFiles.value.length > 0) {
     const refs = pendingFiles.value.map(f => f.path).join('\n')
@@ -137,7 +139,7 @@ async function send() {
   inputText.value = ''
   pendingImages.value = []
   pendingFiles.value = []
-  await chat.sendMessage(msg, project.projectPath, images)
+  await chat.sendMessage(msg, project.projectPath, images, displayContent)
 }
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }

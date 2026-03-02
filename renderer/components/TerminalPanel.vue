@@ -25,6 +25,7 @@ const termContainerEl = ref<HTMLElement>()
 let unsubData: (() => void) | null = null
 let unsubExit: (() => void) | null = null
 let unsubServiceCreated: (() => void) | null = null
+let unsubServiceClosed: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let termCounter = 0
 
@@ -179,6 +180,21 @@ function setupGlobalListeners() {
     activeTermIdx.value = terminals.length - 1
     nextTick(() => mountTerminal(inst))
   })
+  // 监听 Agent 关闭旧服务终端（重启服务时自动移除旧 Tab）
+  unsubServiceClosed = window.api.service.onTerminalClosed(({ id }) => {
+    const idx = terminals.findIndex(t => t.id === id)
+    if (idx === -1) return
+    const inst = terminals[idx]
+    inst.term.dispose()
+    inst.el?.remove()
+    terminals.splice(idx, 1)
+    if (terminals.length === 0) {
+      activeTermIdx.value = 0
+    } else {
+      activeTermIdx.value = Math.min(activeTermIdx.value, terminals.length - 1)
+      switchTerminal(activeTermIdx.value)
+    }
+  })
 }
 
 // ---- Resize observer ----
@@ -230,6 +246,7 @@ onUnmounted(() => {
   unsubData?.()
   unsubExit?.()
   unsubServiceCreated?.()
+  unsubServiceClosed?.()
   resizeObserver?.disconnect()
   window.removeEventListener('terminal:run-command', onRunCommand)
   for (const t of terminals) { t.term.dispose() }

@@ -63,6 +63,7 @@ interface Window {
       stop: (serviceId: string) => Promise<{ success: boolean; error?: string }>
       list: () => Promise<{ serviceId: string; termId: number; command: string; status: string; alive: boolean; startTime: number }[]>
       onTerminalCreated: (cb: (payload: { id: number; serviceId: string; command: string }) => void) => () => void
+      onTerminalClosed: (cb: (payload: { id: number; serviceId: string }) => void) => () => void
     }
     dialog: {
       openFolder: () => Promise<string | null>

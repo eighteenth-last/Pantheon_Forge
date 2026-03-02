@@ -62,6 +62,39 @@ function countWords(str: string): number {
   return matches ? matches.length : 0
 }
 
+const SELECTED_MODEL_KEY = 'pantheon-selected-model'
+const LAST_SESSION_KEY = 'pantheon-last-session'
+
+function persistSelectedModel(id: number | null, name: string) {
+  if (id !== null) {
+    localStorage.setItem(SELECTED_MODEL_KEY, JSON.stringify({ id, name }))
+  } else {
+    localStorage.removeItem(SELECTED_MODEL_KEY)
+  }
+}
+
+function restoreSelectedModel(): { id: number; name: string } | null {
+  try {
+    const raw = localStorage.getItem(SELECTED_MODEL_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch { }
+  return null
+}
+
+function persistLastSession(id: number | null) {
+  if (id !== null) {
+    localStorage.setItem(LAST_SESSION_KEY, String(id))
+  } else {
+    localStorage.removeItem(LAST_SESSION_KEY)
+  }
+}
+
+function restoreLastSessionId(): number | null {
+  const raw = localStorage.getItem(LAST_SESSION_KEY)
+  const id = raw ? parseInt(raw, 10) : NaN
+  return isNaN(id) ? null : id
+}
+
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const sessionId = ref<number | null>(null)
@@ -178,33 +211,36 @@ export const useChatStore = defineStore('chat', () => {
     const session = await window.api.sessions.create(projectPath)
     sessionId.value = session.id
     messages.value = []
+    persistLastSession(session.id)
   }
 
   async function loadModels() {
     const models = await window.api.models.list()
     const activeModels = models.filter((m: any) => m.is_active)
-    if (selectedModelId.value) {
-      const still = activeModels.find((m: any) => m.id === selectedModelId.value)
-      if (still) {
-        activeModelName.value = still.name
-      } else if (activeModels.length > 0) {
-        selectedModelId.value = activeModels[0].id
-        activeModelName.value = activeModels[0].name
-      } else {
-        selectedModelId.value = null
-        activeModelName.value = '未配置'
-      }
+
+    // 优先从 localStorage 恢复上次选中的模型
+    const saved = restoreSelectedModel()
+    const savedModel = saved ? activeModels.find((m: any) => m.id === saved.id) : null
+
+    if (savedModel) {
+      selectedModelId.value = savedModel.id
+      activeModelName.value = savedModel.name
     } else if (activeModels.length > 0) {
       selectedModelId.value = activeModels[0].id
       activeModelName.value = activeModels[0].name
+      persistSelectedModel(activeModels[0].id, activeModels[0].name)
     } else {
+      selectedModelId.value = null
       activeModelName.value = '未配置'
+      persistSelectedModel(null, '')
     }
   }
 
   function selectModel(id: number, name: string) {
     selectedModelId.value = id
     activeModelName.value = name
+    // 持久化到 localStorage，关闭再打开编辑器后恢复
+    persistSelectedModel(id, name)
   }
 
   /** 获取最后一个 text block，没有就创建一个 */
@@ -257,14 +293,14 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
-  async function sendMessage(content: string, projectPath: string, images?: string[]) {
+  async function sendMessage(content: string, projectPath: string, images?: string[], displayContent?: string) {
     if (!sessionId.value || !content.trim() || isStreaming.value) return
 
     // 同步 Agent 配置（skills/mcp/rules）
     await syncAgentConfig()
 
-    // 构建用户消息 blocks
-    const userBlocks: ContentBlock[] = [{ type: 'text', text: content }]
+    // 构建用户消息 blocks（只展示用户输入的文字，不显示附加的文件路径）
+    const userBlocks: ContentBlock[] = [{ type: 'text', text: displayContent ?? content }]
     // 图片作为附加信息显示在用户消息中
     const userMsg: ChatMessage = {
       id: ++msgIdCounter,
@@ -450,6 +486,7 @@ export const useChatStore = defineStore('chat', () => {
   async function loadSession(sid: number) {
     stopProgressiveRender()
     sessionId.value = sid
+    persistLastSession(sid)
     const rawMessages = await window.api.sessions.getMessages(sid)
     const converted: ChatMessage[] = []
     let idCounter = 0
@@ -490,7 +527,7 @@ export const useChatStore = defineStore('chat', () => {
                 }
               })
             }
-          } catch {}
+          } catch { }
         }
         converted.push(currentAssistant)
       } else if (m.role === 'tool') {
@@ -515,13 +552,32 @@ export const useChatStore = defineStore('chat', () => {
     sessionId.value = null
     messages.value = []
     msgIdCounter = 0
+    persistLastSession(null)
   }
 
   /** 删除会话 */
   async function deleteSession(sid: number) {
     await window.api.sessions.delete(sid)
     if (sessionId.value === sid) {
+      persistLastSession(null)
       newChat()
+    }
+  }
+
+  /** 启动时恢复上次的 session（供 App.vue 在项目打开后调用） */
+  async function restoreLastSession(): Promise<boolean> {
+    const sid = restoreLastSessionId()
+    if (!sid) return false
+    try {
+      // 验证 session 是否还存在
+      const sessions = await window.api.sessions.list()
+      const exists = sessions.find((s: any) => s.id === sid)
+      if (!exists) { persistLastSession(null); return false }
+      await loadSession(sid)
+      return true
+    } catch {
+      persistLastSession(null)
+      return false
     }
   }
 
@@ -529,6 +585,7 @@ export const useChatStore = defineStore('chat', () => {
     messages, sessionId, isStreaming, activeModelName, selectedModelId,
     createSession, loadModels, selectModel, sendMessage, stopGeneration,
     clearMessages, loadSessionList, loadSession, newChat, deleteSession,
+    restoreLastSession,
     // 渐进式渲染 API（供 ChatPanel 使用）
     getVisibleText, isProgressiveRendering
   }

@@ -104,6 +104,11 @@ const api = {
       const handler = (_e: any, payload: any) => cb(payload)
       ipcRenderer.on('service:terminal-created', handler)
       return () => ipcRenderer.removeListener('service:terminal-created', handler)
+    },
+    onTerminalClosed: (cb: (payload: { id: number; serviceId: string }) => void) => {
+      const handler = (_e: any, payload: any) => cb(payload)
+      ipcRenderer.on('service:terminal-closed', handler)
+      return () => ipcRenderer.removeListener('service:terminal-closed', handler)
     }
   },
 

@@ -74,11 +74,14 @@ export class ServiceManager {
       return this._waitForPattern(serviceId, existing.termId, options)
     }
 
-    // 停掉旧服务（已停止/错误状态）
+    // 停掉旧服务（已停止/错误状态），并通知前端关闭对应 Tab
     if (existing && this.ptyMap.has(existing.termId)) {
-      this.ptyMap.get(existing.termId)?.kill()
-      this.ptyMap.delete(existing.termId)
-      this.outputBuffer.delete(existing.termId)
+      const oldTermId = existing.termId
+      // 先通知前端关闭旧 Tab
+      this.mainWindow()?.webContents.send('service:terminal-closed', { id: oldTermId, serviceId })
+      this.ptyMap.get(oldTermId)?.kill()
+      this.ptyMap.delete(oldTermId)
+      this.outputBuffer.delete(oldTermId)
     }
 
     const pty = await import('@lydell/node-pty')
