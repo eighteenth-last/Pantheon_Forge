@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:pantheon_forge/core/database/database.dart';
 import 'package:pantheon_forge/models/models.dart';
+import 'package:pantheon_forge/services/storage/session_memory_service.dart';
 
 const _uuid = Uuid();
 
@@ -18,7 +20,8 @@ class SettingsNotifier extends ChangeNotifier {
     final theme = db.getSetting('theme') ?? 'system';
     final language = db.getSetting('language') ?? 'zh';
     final maxTokens = int.tryParse(db.getSetting('maxTokens') ?? '') ?? 32000;
-    final temperature = double.tryParse(db.getSetting('temperature') ?? '') ?? 0.7;
+    final temperature =
+        double.tryParse(db.getSetting('temperature') ?? '') ?? 0.7;
     final systemPrompt = db.getSetting('systemPrompt') ?? '';
     final autoApprove = db.getSetting('autoApprove') == 'true';
     final thinkingEnabled = db.getSetting('thinkingEnabled') == 'true';
@@ -26,10 +29,15 @@ class SettingsNotifier extends ChangeNotifier {
     final activeModelId = db.getSetting('activeModelId') ?? '';
 
     _settings = AppSettings(
-      theme: theme, language: language, maxTokens: maxTokens,
-      temperature: temperature, systemPrompt: systemPrompt,
-      autoApprove: autoApprove, thinkingEnabled: thinkingEnabled,
-      activeProviderId: activeProviderId, activeModelId: activeModelId,
+      theme: theme,
+      language: language,
+      maxTokens: maxTokens,
+      temperature: temperature,
+      systemPrompt: systemPrompt,
+      autoApprove: autoApprove,
+      thinkingEnabled: thinkingEnabled,
+      activeProviderId: activeProviderId,
+      activeModelId: activeModelId,
     );
     notifyListeners();
   }
@@ -59,9 +67,22 @@ final settingsProvider = ChangeNotifierProvider<SettingsNotifier>((ref) {
 // ════════════════════════ UI State ════════════════════════
 
 enum AppMode { agent }
+
 enum NavItem { chat, skills, translate, ssh }
+
 enum ChatView { home, session }
-enum RightPanelTab { steps, plan, team, files, artifacts, context, skills, cron }
+
+enum RightPanelTab {
+  steps,
+  plan,
+  team,
+  files,
+  artifacts,
+  context,
+  skills,
+  cron,
+}
+
 enum SettingsTab { general, provider, about }
 
 class UIState {
@@ -76,6 +97,7 @@ class UIState {
   final bool skillsPageOpen;
   final bool translatePageOpen;
   final bool sshPageOpen;
+  final bool sshSidebarOpen;
 
   const UIState({
     this.mode = AppMode.agent,
@@ -89,13 +111,22 @@ class UIState {
     this.skillsPageOpen = false,
     this.translatePageOpen = false,
     this.sshPageOpen = false,
+    this.sshSidebarOpen = true,
   });
 
   UIState copyWith({
-    AppMode? mode, NavItem? activeNavItem, ChatView? chatView,
-    bool? leftSidebarOpen, bool? rightPanelOpen, RightPanelTab? rightPanelTab,
-    bool? settingsPageOpen, SettingsTab? settingsTab,
-    bool? skillsPageOpen, bool? translatePageOpen, bool? sshPageOpen,
+    AppMode? mode,
+    NavItem? activeNavItem,
+    ChatView? chatView,
+    bool? leftSidebarOpen,
+    bool? rightPanelOpen,
+    RightPanelTab? rightPanelTab,
+    bool? settingsPageOpen,
+    SettingsTab? settingsTab,
+    bool? skillsPageOpen,
+    bool? translatePageOpen,
+    bool? sshPageOpen,
+    bool? sshSidebarOpen,
   }) => UIState(
     mode: mode ?? this.mode,
     activeNavItem: activeNavItem ?? this.activeNavItem,
@@ -108,15 +139,15 @@ class UIState {
     skillsPageOpen: skillsPageOpen ?? this.skillsPageOpen,
     translatePageOpen: translatePageOpen ?? this.translatePageOpen,
     sshPageOpen: sshPageOpen ?? this.sshPageOpen,
+    sshSidebarOpen: sshSidebarOpen ?? this.sshSidebarOpen,
   );
 }
 
 class UINotifier extends StateNotifier<UIState> {
   UINotifier() : super(const UIState());
 
-  void setMode(AppMode mode) => state = state.copyWith(
-    mode: mode, rightPanelOpen: true,
-  );
+  void setMode(AppMode mode) =>
+      state = state.copyWith(mode: mode, rightPanelOpen: true);
 
   void toggleLeftSidebar() =>
       state = state.copyWith(leftSidebarOpen: !state.leftSidebarOpen);
@@ -129,62 +160,100 @@ class UINotifier extends StateNotifier<UIState> {
 
   void navigateToHome() => state = state.copyWith(
     chatView: ChatView.home,
-    settingsPageOpen: false, skillsPageOpen: false,
-    translatePageOpen: false, sshPageOpen: false,
+    settingsPageOpen: false,
+    skillsPageOpen: false,
+    translatePageOpen: false,
+    sshPageOpen: false,
   );
 
   void navigateToSession() => state = state.copyWith(
     chatView: ChatView.session,
-    settingsPageOpen: false, skillsPageOpen: false,
-    translatePageOpen: false, sshPageOpen: false,
+    settingsPageOpen: false,
+    skillsPageOpen: false,
+    translatePageOpen: false,
+    sshPageOpen: false,
   );
 
   void openSettings({SettingsTab? tab}) => state = state.copyWith(
-    settingsPageOpen: true, settingsTab: tab ?? SettingsTab.general,
-    skillsPageOpen: false, translatePageOpen: false, sshPageOpen: false,
+    settingsPageOpen: true,
+    settingsTab: tab ?? SettingsTab.general,
+    skillsPageOpen: false,
+    translatePageOpen: false,
+    sshPageOpen: false,
     leftSidebarOpen: false,
   );
 
   void closeSettings() => state = state.copyWith(settingsPageOpen: false);
 
-  void setSettingsTab(SettingsTab tab) => state = state.copyWith(settingsTab: tab);
+  void setSettingsTab(SettingsTab tab) =>
+      state = state.copyWith(settingsTab: tab);
 
   void openSkills() => state = state.copyWith(
-    skillsPageOpen: true, settingsPageOpen: false,
-    translatePageOpen: false, sshPageOpen: false, leftSidebarOpen: false,
+    skillsPageOpen: true,
+    settingsPageOpen: false,
+    translatePageOpen: false,
+    sshPageOpen: false,
+    leftSidebarOpen: false,
   );
 
   void closeSkills() => state = state.copyWith(skillsPageOpen: false);
 
   void openTranslate() => state = state.copyWith(
-    translatePageOpen: true, settingsPageOpen: false,
-    skillsPageOpen: false, sshPageOpen: false, leftSidebarOpen: false,
+    translatePageOpen: true,
+    settingsPageOpen: false,
+    skillsPageOpen: false,
+    sshPageOpen: false,
+    leftSidebarOpen: false,
   );
 
   void closeTranslate() => state = state.copyWith(translatePageOpen: false);
 
   void openSsh() => state = state.copyWith(
-    sshPageOpen: true, settingsPageOpen: false,
-    skillsPageOpen: false, translatePageOpen: false, leftSidebarOpen: false,
+    sshPageOpen: true,
+    settingsPageOpen: false,
+    skillsPageOpen: false,
+    translatePageOpen: false,
+    leftSidebarOpen: false,
   );
 
   void closeSsh() => state = state.copyWith(sshPageOpen: false);
 
+  void toggleSshSidebar() =>
+      state = state.copyWith(sshSidebarOpen: !state.sshSidebarOpen);
+
   void setNavItem(NavItem item) {
-    if (item == NavItem.skills) { openSkills(); return; }
-    if (item == NavItem.translate) { openTranslate(); return; }
-    if (item == NavItem.ssh) { openSsh(); return; }
+    if (item == NavItem.skills) {
+      openSkills();
+      return;
+    }
+    if (item == NavItem.translate) {
+      openTranslate();
+      return;
+    }
+    if (item == NavItem.ssh) {
+      // 如果 SSH 页面已打开，切换侧边栏；否则打开 SSH 页面
+      if (state.sshPageOpen) {
+        toggleSshSidebar();
+      } else {
+        openSsh();
+      }
+      return;
+    }
     // chat
     state = state.copyWith(
       activeNavItem: item,
-      settingsPageOpen: false, skillsPageOpen: false,
-      translatePageOpen: false, sshPageOpen: false,
+      settingsPageOpen: false,
+      skillsPageOpen: false,
+      translatePageOpen: false,
+      sshPageOpen: false,
       leftSidebarOpen: true,
     );
   }
 }
 
-final uiProvider = StateNotifierProvider<UINotifier, UIState>((ref) => UINotifier());
+final uiProvider = StateNotifierProvider<UINotifier, UIState>(
+  (ref) => UINotifier(),
+);
 
 // ════════════════════════ Provider (LLM) State ════════════════════════
 
@@ -199,24 +268,37 @@ class ProviderNotifier extends ChangeNotifier {
 
   AIProvider? get activeProvider {
     if (_activeProviderId.isEmpty) return null;
-    try { return _providers.firstWhere((p) => p.id == _activeProviderId); }
-    catch (_) { return null; }
+    try {
+      return _providers.firstWhere((p) => p.id == _activeProviderId);
+    } catch (_) {
+      return null;
+    }
   }
 
   AIModelConfig? get activeModel {
     final prov = activeProvider;
-    if (prov == null || _activeModelId.isEmpty) return null;
-    try { return prov.models.firstWhere((m) => m.id == _activeModelId); }
-    catch (_) { return null; }
+    if (prov == null || prov.models.isEmpty) return null;
+    try {
+      return prov.models.firstWhere((m) => m.id == _activeModelId);
+    } catch (_) {
+      if (prov.defaultModel != null && prov.defaultModel!.isNotEmpty) {
+        try {
+          return prov.models.firstWhere((m) => m.id == prov.defaultModel);
+        } catch (_) {}
+      }
+      return prov.models.first;
+    }
   }
 
   ProviderConfig? get activeProviderConfig {
     final prov = activeProvider;
-    if (prov == null) return null;
+    final model = activeModel;
+    if (prov == null || model == null) return null;
     return ProviderConfig(
-      type: prov.type, apiKey: prov.apiKey,
+      type: prov.type,
+      apiKey: prov.apiKey,
       baseUrl: prov.baseUrl.isNotEmpty ? prov.baseUrl : null,
-      model: _activeModelId,
+      model: model.id,
     );
   }
 
@@ -234,13 +316,24 @@ class ProviderNotifier extends ChangeNotifier {
     AppDatabase.instance.db.execute(
       '''INSERT INTO providers (id, name, type, api_key, base_url, enabled, models_json, default_model, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-      [row['id'], row['name'], row['type'], row['api_key'], row['base_url'],
-       row['enabled'], row['models_json'], row['default_model'], row['created_at']],
+      [
+        row['id'],
+        row['name'],
+        row['type'],
+        row['api_key'],
+        row['base_url'],
+        row['enabled'],
+        row['models_json'],
+        row['default_model'],
+        row['created_at'],
+      ],
     );
     _providers = [..._providers, provider];
-    
+
     // Auto-activate if this is the first enabled provider with models
-    if (_activeProviderId.isEmpty && provider.enabled && provider.models.isNotEmpty) {
+    if (_activeProviderId.isEmpty &&
+        provider.enabled &&
+        provider.models.isNotEmpty) {
       setActive(provider.id, provider.models.first.id);
     }
     notifyListeners();
@@ -251,10 +344,20 @@ class ProviderNotifier extends ChangeNotifier {
     AppDatabase.instance.db.execute(
       '''UPDATE providers SET name=?, type=?, api_key=?, base_url=?, enabled=?,
          models_json=?, default_model=? WHERE id=?''',
-      [row['name'], row['type'], row['api_key'], row['base_url'],
-       row['enabled'], row['models_json'], row['default_model'], row['id']],
+      [
+        row['name'],
+        row['type'],
+        row['api_key'],
+        row['base_url'],
+        row['enabled'],
+        row['models_json'],
+        row['default_model'],
+        row['id'],
+      ],
     );
-    _providers = _providers.map((p) => p.id == provider.id ? provider : p).toList();
+    _providers = _providers
+        .map((p) => p.id == provider.id ? provider : p)
+        .toList();
     notifyListeners();
   }
 
@@ -290,9 +393,8 @@ final providerProvider = ChangeNotifierProvider<ProviderNotifier>((ref) {
 class ChatNotifier extends ChangeNotifier {
   List<ChatSession> _sessions = [];
   String? _activeSessionId;
-  Map<String, List<UnifiedMessage>> _messageCache = {};
+  final Map<String, List<UnifiedMessage>> _messageCache = {};
   String? _streamingMessageId;
-  bool _loaded = false;
 
   List<ChatSession> get sessions => _sessions;
   String? get activeSessionId => _activeSessionId;
@@ -301,8 +403,19 @@ class ChatNotifier extends ChangeNotifier {
 
   ChatSession? get activeSession {
     if (_activeSessionId == null) return null;
-    try { return _sessions.firstWhere((s) => s.id == _activeSessionId); }
-    catch (_) { return null; }
+    try {
+      return _sessions.firstWhere((s) => s.id == _activeSessionId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  ChatSession? getSessionById(String sessionId) {
+    try {
+      return _sessions.firstWhere((s) => s.id == sessionId);
+    } catch (_) {
+      return null;
+    }
   }
 
   List<UnifiedMessage> getMessages(String sessionId) {
@@ -315,22 +428,24 @@ class ChatNotifier extends ChangeNotifier {
       '''SELECT s.*, (SELECT COUNT(*) FROM messages WHERE session_id = s.id) as msg_count
          FROM sessions s ORDER BY s.pinned DESC, s.updated_at DESC''',
     );
-    _sessions = rows.map((r) => ChatSession(
-      id: r['id'] as String,
-      title: r['title'] as String,
-      mode: r['mode'] as String? ?? 'chat',
-      projectId: r['project_id'] as String?,
-      workingFolder: r['working_folder'] as String?,
-      icon: r['icon'] as String?,
-      pinned: (r['pinned'] as int? ?? 0) == 1,
-      providerId: r['provider_id'] as String?,
-      modelId: r['model_id'] as String?,
-      createdAt: r['created_at'] as int,
-      updatedAt: r['updated_at'] as int,
-      messageCount: r['msg_count'] as int? ?? 0,
-    )).toList();
-    _loaded = true;
-    
+    _sessions = rows
+        .map(
+          (r) => ChatSession(
+            id: r['id'] as String,
+            title: r['title'] as String,
+            mode: r['mode'] as String? ?? 'chat',
+            projectId: r['project_id'] as String?,
+            workingFolder: r['working_folder'] as String?,
+            icon: r['icon'] as String?,
+            pinned: (r['pinned'] as int? ?? 0) == 1,
+            providerId: r['provider_id'] as String?,
+            modelId: r['model_id'] as String?,
+            createdAt: r['created_at'] as int,
+            updatedAt: r['updated_at'] as int,
+            messageCount: r['msg_count'] as int? ?? 0,
+          ),
+        )
+        .toList();
     // Auto-restore last active session
     final lastActiveSessionId = db.getSetting('lastActiveSessionId');
     if (lastActiveSessionId != null && lastActiveSessionId.isNotEmpty) {
@@ -356,7 +471,9 @@ class ChatNotifier extends ChangeNotifier {
       try {
         final parsed = jsonDecode(contentRaw);
         if (parsed is List) {
-          content = parsed.map((e) => ContentBlock.fromJson(e as Map<String, dynamic>)).toList();
+          content = parsed
+              .map((e) => ContentBlock.fromJson(e as Map<String, dynamic>))
+              .toList();
         } else {
           content = contentRaw;
         }
@@ -365,8 +482,9 @@ class ChatNotifier extends ChangeNotifier {
       }
       TokenUsage? usage;
       if (r['usage'] != null) {
-        try { usage = TokenUsage.fromJson(jsonDecode(r['usage'] as String)); }
-        catch (_) {}
+        try {
+          usage = TokenUsage.fromJson(jsonDecode(r['usage'] as String));
+        } catch (_) {}
       }
       return UnifiedMessage(
         id: r['id'] as String,
@@ -382,23 +500,81 @@ class ChatNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  String createSession({String mode = 'chat', String title = 'New Chat'}) {
+  String createSession({
+    String mode = 'chat',
+    String title = 'New Chat',
+    String? projectId,
+    String? workingFolder,
+    String? icon,
+    String? providerId,
+    String? modelId,
+  }) {
     final id = _uuid.v4();
     final now = DateTime.now().millisecondsSinceEpoch;
     AppDatabase.instance.db.execute(
-      '''INSERT INTO sessions (id, title, mode, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)''',
-      [id, title, mode, now, now],
+      '''INSERT INTO sessions (id, title, mode, project_id, working_folder, icon, provider_id, model_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+      [
+        id,
+        title,
+        mode,
+        projectId,
+        workingFolder,
+        icon,
+        providerId,
+        modelId,
+        now,
+        now,
+      ],
     );
     final session = ChatSession(
-      id: id, title: title, mode: mode,
-      createdAt: now, updatedAt: now,
+      id: id,
+      title: title,
+      mode: mode,
+      projectId: projectId,
+      workingFolder: workingFolder,
+      icon: icon,
+      providerId: providerId,
+      modelId: modelId,
+      createdAt: now,
+      updatedAt: now,
     );
     _sessions = [session, ..._sessions];
     _messageCache[id] = [];
     setActiveSession(id);
     return id;
   }
+
+  String createLocalProjectSession({
+    required String folderPath,
+    String mode = 'chat',
+  }) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final projectId = _uuid.v4();
+    final folderName = p.basename(folderPath);
+    final projectName = folderName.isEmpty ? folderPath : folderName;
+
+    AppDatabase.instance.db.execute(
+      '''INSERT INTO projects (id, name, working_folder, ssh_connection_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)''',
+      [projectId, projectName, folderPath, null, now, now],
+    );
+
+    return createSession(
+      mode: mode,
+      title: projectName,
+      projectId: projectId,
+      workingFolder: folderPath,
+      icon: 'folder',
+      providerId: refSafeProviderId(),
+      modelId: refSafeModelId(),
+    );
+  }
+
+  String? refSafeProviderId() =>
+      AppDatabase.instance.getSetting('activeProviderId');
+
+  String? refSafeModelId() => AppDatabase.instance.getSetting('activeModelId');
 
   void setActiveSession(String id) {
     _activeSessionId = id;
@@ -422,11 +598,23 @@ class ChatNotifier extends ChangeNotifier {
     AppDatabase.instance.db.execute(
       '''INSERT INTO messages (id, session_id, role, content, created_at, usage, sort_order)
          VALUES (?, ?, ?, ?, ?, ?, ?)''',
-      [message.id, sessionId, message.role.name, contentStr,
-       message.createdAt, message.usage != null ? jsonEncode(message.usage!.toJson()) : null,
-       sortOrder],
+      [
+        message.id,
+        sessionId,
+        message.role.name,
+        contentStr,
+        message.createdAt,
+        message.usage != null ? jsonEncode(message.usage!.toJson()) : null,
+        sortOrder,
+      ],
     );
     _messageCache[sessionId] = [...messages, message];
+
+    // Save to memory file
+    SessionMemoryService.instance.saveSession(
+      sessionId,
+      _messageCache[sessionId]!,
+    );
 
     // Update session title from first user message
     if (message.role == MessageRole.user && messages.isEmpty) {
@@ -458,12 +646,14 @@ class ChatNotifier extends ChangeNotifier {
         (message.content as List<ContentBlock>).map((b) => b.toJson()).toList(),
       );
     }
-    AppDatabase.instance.db.execute(
-      'UPDATE messages SET content = ?, usage = ? WHERE id = ?',
-      [contentStr,
-       message.usage != null ? jsonEncode(message.usage!.toJson()) : null,
-       message.id],
-    );
+    AppDatabase.instance.db
+        .execute('UPDATE messages SET content = ?, usage = ? WHERE id = ?', [
+          contentStr,
+          message.usage != null ? jsonEncode(message.usage!.toJson()) : null,
+          message.id,
+        ]);
+    // Save to memory file
+    SessionMemoryService.instance.saveSession(sessionId, updated);
     notifyListeners();
   }
 
@@ -473,10 +663,15 @@ class ChatNotifier extends ChangeNotifier {
   }
 
   void deleteSession(String id) {
-    AppDatabase.instance.db.execute('DELETE FROM messages WHERE session_id = ?', [id]);
+    AppDatabase.instance.db.execute(
+      'DELETE FROM messages WHERE session_id = ?',
+      [id],
+    );
     AppDatabase.instance.db.execute('DELETE FROM sessions WHERE id = ?', [id]);
     _sessions = _sessions.where((s) => s.id != id).toList();
     _messageCache.remove(id);
+    // Delete memory file
+    SessionMemoryService.instance.deleteSession(id);
     if (_activeSessionId == id) {
       _activeSessionId = _sessions.isNotEmpty ? _sessions.first.id : null;
     }
@@ -487,9 +682,12 @@ class ChatNotifier extends ChangeNotifier {
     final session = _sessions.firstWhere((s) => s.id == id);
     final newPinned = !session.pinned;
     AppDatabase.instance.db.execute(
-      'UPDATE sessions SET pinned = ? WHERE id = ?', [newPinned ? 1 : 0, id],
+      'UPDATE sessions SET pinned = ? WHERE id = ?',
+      [newPinned ? 1 : 0, id],
     );
-    _sessions = _sessions.map((s) => s.id == id ? s.copyWith(pinned: newPinned) : s).toList();
+    _sessions = _sessions
+        .map((s) => s.id == id ? s.copyWith(pinned: newPinned) : s)
+        .toList();
     _sessions.sort((a, b) {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
@@ -499,28 +697,35 @@ class ChatNotifier extends ChangeNotifier {
   }
 
   void clearMessages(String sessionId) {
-    AppDatabase.instance.db.execute('DELETE FROM messages WHERE session_id = ?', [sessionId]);
+    AppDatabase.instance.db.execute(
+      'DELETE FROM messages WHERE session_id = ?',
+      [sessionId],
+    );
     _messageCache[sessionId] = [];
+    // Clear memory file
+    SessionMemoryService.instance.saveSession(sessionId, []);
     notifyListeners();
   }
 
   void _updateSessionTitle(String sessionId, String title) {
     AppDatabase.instance.db.execute(
-      'UPDATE sessions SET title = ? WHERE id = ?', [title, sessionId],
+      'UPDATE sessions SET title = ? WHERE id = ?',
+      [title, sessionId],
     );
-    _sessions = _sessions.map((s) =>
-      s.id == sessionId ? s.copyWith(title: title) : s,
-    ).toList();
+    _sessions = _sessions
+        .map((s) => s.id == sessionId ? s.copyWith(title: title) : s)
+        .toList();
   }
 
   void _touchSession(String sessionId) {
     final now = DateTime.now().millisecondsSinceEpoch;
     AppDatabase.instance.db.execute(
-      'UPDATE sessions SET updated_at = ? WHERE id = ?', [now, sessionId],
+      'UPDATE sessions SET updated_at = ? WHERE id = ?',
+      [now, sessionId],
     );
-    _sessions = _sessions.map((s) =>
-      s.id == sessionId ? s.copyWith(updatedAt: now) : s,
-    ).toList();
+    _sessions = _sessions
+        .map((s) => s.id == sessionId ? s.copyWith(updatedAt: now) : s)
+        .toList();
   }
 }
 

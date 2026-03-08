@@ -36,11 +36,11 @@ class AppNavRail extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: _NavButton(
-                  icon: icon,
-                  isActive: _isActive(ui, item),
-                  onTap: () => ref.read(uiProvider.notifier).setNavItem(item),
-                  colorScheme: colorScheme,
-                ),
+                icon: icon,
+                isActive: _isActive(ui, item),
+                onTap: () => ref.read(uiProvider.notifier).setNavItem(item),
+                colorScheme: colorScheme,
+              ),
               ),
             ),
           const Spacer(),

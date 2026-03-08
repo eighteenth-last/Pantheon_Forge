@@ -33,6 +33,7 @@ dependencies:
   shared_preferences: ^2.5.3
   intl: ^0.20.2
   collection: ^1.19.1
+  file_selector: ^1.0.3
 
   # Window management
   window_manager: ^0.4.3
@@ -40,6 +41,10 @@ dependencies:
   # Syntax highlighting
   flutter_highlight: ^0.7.0
   highlight: ^0.7.0
+
+  # SSH
+  dartssh2: ^2.11.0
+  xterm: ^4.0.0
 
 dev_dependencies:
   flutter_test:

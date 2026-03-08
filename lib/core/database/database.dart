@@ -15,8 +15,79 @@ class AppDatabase {
     _db = sqlite3.open(StorageManager.instance.dbPath);
     _db.execute('PRAGMA journal_mode = WAL');
     _db.execute('PRAGMA foreign_keys = ON');
-    _createTables();
+    _migrateDatabase();
     _initialized = true;
+  }
+
+  void _migrateDatabase() {
+    // Check if database is empty
+    final tables = _db.select("SELECT name FROM sqlite_master WHERE type='table'");
+    final isEmpty = tables.isEmpty;
+    
+    if (isEmpty) {
+      // Fresh database, create all tables
+      _createTables();
+    } else {
+      // Existing database, run migrations
+      _migrateSshTables();
+    }
+  }
+
+  void _migrateSshTables() {
+    // Check if ssh_connections table exists
+    final tableExists = _db.select("SELECT name FROM sqlite_master WHERE type='table' AND name='ssh_connections'");
+    
+    if (tableExists.isEmpty) {
+      // Table doesn't exist, create it
+      _db.execute('''
+        CREATE TABLE IF NOT EXISTS ssh_connections (
+          id TEXT PRIMARY KEY, group_id TEXT, name TEXT NOT NULL,
+          host TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 22,
+          username TEXT NOT NULL, auth_type TEXT NOT NULL DEFAULT 'password',
+          private_key_path TEXT, startup_command TEXT, default_directory TEXT,
+          proxy_jump TEXT, keep_alive_interval INTEGER NOT NULL DEFAULT 60,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          last_connected_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        )''');
+      return;
+    }
+    
+    // Check if table has new columns
+    final tableInfo = _db.select('PRAGMA table_info(ssh_connections)');
+    final columnNames = tableInfo.map((r) => r['name'] as String).toList();
+    
+    final needsMigration = !columnNames.contains('private_key_path') ||
+                          !columnNames.contains('startup_command') ||
+                          !columnNames.contains('proxy_jump') ||
+                          !columnNames.contains('keep_alive_interval');
+    
+    if (!needsMigration) return;
+    
+    // Migrate table
+    _db.execute('ALTER TABLE ssh_connections RENAME TO ssh_connections_old');
+    
+    _db.execute('''
+      CREATE TABLE ssh_connections (
+        id TEXT PRIMARY KEY, group_id TEXT, name TEXT NOT NULL,
+        host TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 22,
+        username TEXT NOT NULL, auth_type TEXT NOT NULL DEFAULT 'password',
+        private_key_path TEXT, startup_command TEXT, default_directory TEXT,
+        proxy_jump TEXT, keep_alive_interval INTEGER NOT NULL DEFAULT 60,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        last_connected_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      )''');
+    
+    // Copy existing data
+    _db.execute('''
+      INSERT INTO ssh_connections 
+      (id, group_id, name, host, port, username, auth_type, default_directory, 
+       sort_order, last_connected_at, created_at, updated_at)
+      SELECT id, group_id, name, host, port, username, auth_type, default_directory,
+             sort_order, last_connected_at, created_at, updated_at
+      FROM ssh_connections_old
+    ''');
+    
+    _db.execute('DROP TABLE ssh_connections_old');
   }
 
   void _createTables() {
@@ -84,13 +155,74 @@ class AppDatabase {
         last_fired_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       )''');
 
+    // Create SSH tables with migration support
     _db.execute('''
-      CREATE TABLE IF NOT EXISTS ssh_connections (
+      CREATE TABLE IF NOT EXISTS ssh_connections_old (
         id TEXT PRIMARY KEY, group_id TEXT, name TEXT NOT NULL,
         host TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 22,
         username TEXT NOT NULL, auth_type TEXT NOT NULL DEFAULT 'password',
         default_directory TEXT, sort_order INTEGER NOT NULL DEFAULT 0,
         last_connected_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      )''');
+
+    // Check if we need to migrate
+    final tableInfo = _db.select("PRAGMA table_info(ssh_connections_old)");
+    final hasPrivateKeyPath = tableInfo.any((r) => r['name'] == 'private_key_path');
+    
+    if (!hasPrivateKeyPath) {
+      // Migrate existing table
+      _db.execute('''
+        CREATE TABLE IF NOT EXISTS ssh_connections (
+          id TEXT PRIMARY KEY, group_id TEXT, name TEXT NOT NULL,
+          host TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 22,
+          username TEXT NOT NULL, auth_type TEXT NOT NULL DEFAULT 'password',
+          private_key_path TEXT, startup_command TEXT, default_directory TEXT,
+          proxy_jump TEXT, keep_alive_interval INTEGER NOT NULL DEFAULT 60,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          last_connected_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        )''');
+      
+      // Copy data from old table
+      _db.execute('''
+        INSERT INTO ssh_connections 
+        (id, group_id, name, host, port, username, auth_type, default_directory, 
+         sort_order, last_connected_at, created_at, updated_at)
+        SELECT id, group_id, name, host, port, username, auth_type, default_directory,
+               sort_order, last_connected_at, created_at, updated_at
+        FROM ssh_connections_old
+      ''');
+      
+      _db.execute('DROP TABLE ssh_connections_old');
+    } else {
+      // Table already has new columns, just rename if needed
+      _db.execute('DROP TABLE IF EXISTS ssh_connections');
+      _db.execute('''
+        CREATE TABLE ssh_connections (
+          id TEXT PRIMARY KEY, group_id TEXT, name TEXT NOT NULL,
+          host TEXT NOT NULL, port INTEGER NOT NULL DEFAULT 22,
+          username TEXT NOT NULL, auth_type TEXT NOT NULL DEFAULT 'password',
+          private_key_path TEXT, startup_command TEXT, default_directory TEXT,
+          proxy_jump TEXT, keep_alive_interval INTEGER NOT NULL DEFAULT 60,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          last_connected_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        )''');
+      _db.execute('INSERT INTO ssh_connections SELECT * FROM ssh_connections_old');
+      _db.execute('DROP TABLE ssh_connections_old');
+    }
+
+    _db.execute('''
+      CREATE TABLE IF NOT EXISTS ssh_groups (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      )''');
+
+    _db.execute('''
+      CREATE TABLE IF NOT EXISTS ssh_credentials (
+        connection_id TEXT PRIMARY KEY,
+        password TEXT,
+        passphrase TEXT,
+        FOREIGN KEY (connection_id) REFERENCES ssh_connections(id) ON DELETE CASCADE
       )''');
   }
 

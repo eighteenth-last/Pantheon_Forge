@@ -1,0 +1,66 @@
+{
+  "sessionId": "c75aa8f8-8570-48ba-9ce9-cdb5db63f906",
+  "updatedAt": 1772975653739,
+  "messages": [
+    {
+      "id": "8d0cdd39-632b-4bd9-b92e-7081f793136d",
+      "role": "user",
+      "content": "你好",
+      "createdAt": 1772964870236
+    },
+    {
+      "id": "b8c01571-eb77-4071-8140-45b55fd27047",
+      "role": "assistant",
+      "content": "你好！我是 Claude Code，你的 AI 编程助手。有什么我可以帮你的吗？无论是代码问题、系统配置，还是其他开发相关的事情，随时告诉我。",
+      "createdAt": 1772964870246
+    },
+    {
+      "id": "2c9f82ac-894f-43f6-8568-b458be9e107b",
+      "role": "user",
+      "content": "你好",
+      "createdAt": 1772971595447
+    },
+    {
+      "id": "cbeb6995-44cb-4d76-977d-f3f679de7504",
+      "role": "assistant",
+      "content": "⚠️ This exception was thrown because the response has a status code of 400 and RequestOptions.validateStatus was configured to throw for this status code.\nThe status code of 400 has the following meaning: \"Client error - the request contains bad syntax or cannot be fulfilled\"\nRead more about status codes at https://developer.mozilla.org/en-US/docs/Web/HTTP/Status\nIn order to resolve this exception you typically have either to verify and fix your request code or you have to fix the server code.\n",
+      "createdAt": 1772971595462
+    },
+    {
+      "id": "7e3d94b1-e668-4d4d-95d8-f16c2d8a8b28",
+      "role": "user",
+      "content": "你好",
+      "createdAt": 1772974280212
+    },
+    {
+      "id": "d86083b3-417c-4ccd-b0bc-cd90da67b700",
+      "role": "assistant",
+      "content": "⚠️ This exception was thrown because the response has a status code of 400 and RequestOptions.validateStatus was configured to throw for this status code.\nThe status code of 400 has the following meaning: \"Client error - the request contains bad syntax or cannot be fulfilled\"\nRead more about status codes at https://developer.mozilla.org/en-US/docs/Web/HTTP/Status\nIn order to resolve this exception you typically have either to verify and fix your request code or you have to fix the server code.\n",
+      "createdAt": 1772974280220
+    },
+    {
+      "id": "4acc98b1-a4d9-4266-8517-687ed157c1d0",
+      "role": "user",
+      "content": "你好",
+      "createdAt": 1772974863012
+    },
+    {
+      "id": "f24b0628-8f9b-4df8-a63f-23dc77e26dde",
+      "role": "assistant",
+      "content": "⚠️ HTTP 400: Bad Request",
+      "createdAt": 1772974863022
+    },
+    {
+      "id": "9a82984b-9f17-4d8b-9052-f0d6e525b841",
+      "role": "user",
+      "content": "你好",
+      "createdAt": 1772975653031
+    },
+    {
+      "id": "3977f02a-5873-412d-b979-2ab08631c9b0",
+      "role": "assistant",
+      "content": "⚠️ HTTP 400: Bad Request",
+      "createdAt": 1772975653039
+    }
+  ]
+}

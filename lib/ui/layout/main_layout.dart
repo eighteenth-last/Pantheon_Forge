@@ -9,6 +9,7 @@ import 'package:pantheon_forge/ui/chat/chat_home_page.dart';
 import 'package:pantheon_forge/ui/chat/chat_view.dart';
 import 'package:pantheon_forge/ui/settings/settings_page.dart';
 import 'package:pantheon_forge/ui/cowork/right_panel.dart';
+import 'package:pantheon_forge/ui/ssh/ssh_page.dart';
 
 class MainLayout extends ConsumerWidget {
   const MainLayout({super.key});
@@ -50,8 +51,8 @@ class MainLayout extends ConsumerWidget {
                     // NavRail
                     const AppNavRail(),
 
-                    // Session List Panel
-                    if (ui.leftSidebarOpen) const SessionListPanel(),
+                    // Session List Panel (在 SSH 页面时隐藏)
+                    if (ui.leftSidebarOpen && !ui.sshPageOpen) const SessionListPanel(),
 
                     // Main Content
                     Expanded(
@@ -88,10 +89,7 @@ class MainLayout extends ConsumerWidget {
       );
     }
     if (ui.sshPageOpen) {
-      return Center(
-        child: Text(t('nav.ssh', locale),
-          style: TextStyle(color: colorScheme.onSurfaceVariant)),
-      );
+      return const SshPage();
     }
     if (ui.chatView == ChatView.home) {
       return const ChatHomePage();

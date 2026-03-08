@@ -170,20 +170,35 @@ class TokenUsage {
   final int inputTokens;
   final int outputTokens;
   final int? reasoningTokens;
+  final int? contextTokens; // 当前上下文窗口使用量
+  final int? cacheReadTokens; // 缓存读取token数
+  final int? cacheCreationTokens; // 缓存创建token数
 
   const TokenUsage({
-    this.inputTokens = 0, this.outputTokens = 0, this.reasoningTokens,
+    this.inputTokens = 0, 
+    this.outputTokens = 0, 
+    this.reasoningTokens,
+    this.contextTokens,
+    this.cacheReadTokens,
+    this.cacheCreationTokens,
   });
 
   Map<String, dynamic> toJson() => {
-    'inputTokens': inputTokens, 'outputTokens': outputTokens,
+    'inputTokens': inputTokens, 
+    'outputTokens': outputTokens,
     'reasoningTokens': reasoningTokens,
+    'contextTokens': contextTokens,
+    'cacheReadTokens': cacheReadTokens,
+    'cacheCreationTokens': cacheCreationTokens,
   };
 
   factory TokenUsage.fromJson(Map<String, dynamic> json) => TokenUsage(
     inputTokens: json['inputTokens'] as int? ?? 0,
     outputTokens: json['outputTokens'] as int? ?? 0,
     reasoningTokens: json['reasoningTokens'] as int?,
+    contextTokens: json['contextTokens'] as int?,
+    cacheReadTokens: json['cacheReadTokens'] as int?,
+    cacheCreationTokens: json['cacheCreationTokens'] as int?,
   );
 }
 

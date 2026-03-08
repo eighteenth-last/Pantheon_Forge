@@ -29,12 +29,21 @@ Stream<StreamEvent> sendMessageStream({
 // ──────────────── OpenAI Chat Completions ────────────────
 
 Stream<StreamEvent> _sendOpenAI(
-  List<UnifiedMessage> messages, ProviderConfig config,
-  List<ToolDefinition> tools, CancelToken? cancelToken,
+  List<UnifiedMessage> messages,
+  ProviderConfig config,
+  List<ToolDefinition> tools,
+  CancelToken? cancelToken,
 ) async* {
   final dio = Dio();
-  final baseUrl = (config.baseUrl ?? 'https://api.openai.com').replaceAll(RegExp(r'/+$'), '');
-  
+  final baseUrl = (config.baseUrl ?? 'https://api.openai.com').replaceAll(
+    RegExp(r'/+$'),
+    '',
+  );
+  final isReasoningModel = RegExp(
+    r'^(o[1-9]|o\d+-mini)',
+    caseSensitive: false,
+  ).hasMatch(config.model);
+
   // Construct URL - if baseUrl already ends with /v1, just add /chat/completions
   String url;
   if (baseUrl.endsWith('/v1') || baseUrl.endsWith('/compatible-mode/v1')) {
@@ -47,19 +56,35 @@ Stream<StreamEvent> _sendOpenAI(
     'model': config.model,
     'messages': messages.map((m) => _formatOpenAIMessage(m)).toList(),
     'stream': true,
-    'max_tokens': config.maxTokens,
-    'temperature': config.temperature,
+    'stream_options': {'include_usage': true},
   };
 
+  if (config.maxTokens > 0) {
+    if (isReasoningModel) {
+      body['max_completion_tokens'] = config.maxTokens;
+    } else {
+      body['max_tokens'] = config.maxTokens;
+    }
+  }
+
+  if (!isReasoningModel) {
+    body['temperature'] = config.temperature;
+  }
+
   if (tools.isNotEmpty) {
-    body['tools'] = tools.map((t) => {
-      'type': 'function',
-      'function': {
-        'name': t.name,
-        'description': t.description,
-        'parameters': t.inputSchema,
-      },
-    }).toList();
+    body['tools'] = tools
+        .map(
+          (t) => {
+            'type': 'function',
+            'function': {
+              'name': t.name,
+              'description': t.description,
+              'parameters': t.inputSchema,
+            },
+          },
+        )
+        .toList();
+    body['tool_choice'] = 'auto';
   }
 
   yield const StreamEvent(type: StreamEventType.messageStart);
@@ -120,7 +145,8 @@ Stream<StreamEvent> _sendOpenAI(
                 toolCallArgs[id] = StringBuffer();
                 yield StreamEvent(
                   type: StreamEventType.toolCallStart,
-                  toolCallId: id, toolName: name,
+                  toolCallId: id,
+                  toolName: name,
                 );
               }
 
@@ -130,11 +156,26 @@ Stream<StreamEvent> _sendOpenAI(
                   toolCallArgs[activeId]?.write(argsDelta);
                   yield StreamEvent(
                     type: StreamEventType.toolCallDelta,
-                    toolCallId: activeId, argumentsDelta: argsDelta,
+                    toolCallId: activeId,
+                    argumentsDelta: argsDelta,
                   );
                 }
               }
             }
+          }
+
+          // Parse usage if present
+          final usage = data['usage'] as Map<String, dynamic>?;
+          TokenUsage? tokenUsage;
+          if (usage != null) {
+            tokenUsage = TokenUsage(
+              inputTokens: usage['prompt_tokens'] as int? ?? 0,
+              outputTokens: usage['completion_tokens'] as int? ?? 0,
+              contextTokens:
+                  usage['total_tokens'] as int? ??
+                  (usage['prompt_tokens'] as int? ?? 0) +
+                      (usage['completion_tokens'] as int? ?? 0),
+            );
           }
 
           // Finish
@@ -143,21 +184,20 @@ Stream<StreamEvent> _sendOpenAI(
             // Emit tool call ends
             for (final entry in toolCallArgs.entries) {
               Map<String, dynamic>? input;
-              try { input = jsonDecode(entry.value.toString()); } catch (_) {}
+              try {
+                input = jsonDecode(entry.value.toString());
+              } catch (_) {}
               yield StreamEvent(
                 type: StreamEventType.toolCallEnd,
-                toolCallId: entry.key, toolCallInput: input,
+                toolCallId: entry.key,
+                toolCallInput: input,
               );
             }
 
-            final usage = data['usage'] as Map<String, dynamic>?;
             yield StreamEvent(
               type: StreamEventType.messageEnd,
               stopReason: finishReason,
-              usage: usage != null ? TokenUsage(
-                inputTokens: usage['prompt_tokens'] as int? ?? 0,
-                outputTokens: usage['completion_tokens'] as int? ?? 0,
-              ) : null,
+              usage: tokenUsage,
             );
           }
         } catch (_) {}
@@ -167,31 +207,104 @@ Stream<StreamEvent> _sendOpenAI(
     if (e.type == DioExceptionType.cancel) return;
     yield StreamEvent(
       type: StreamEventType.error,
-      errorMessage: e.message ?? 'Request failed',
+      errorMessage: _formatDioError(e),
     );
   } catch (e) {
     yield StreamEvent(type: StreamEventType.error, errorMessage: e.toString());
   }
 }
 
-Map<String, dynamic> _formatOpenAIMessage(UnifiedMessage m) {
-  final msg = <String, dynamic>{'role': m.role.name};
-  if (m.content is String) {
-    msg['content'] = m.content;
-  } else {
-    msg['content'] = m.textContent;
+String _formatDioError(DioException error) {
+  final response = error.response;
+  if (response == null) {
+    return error.message ?? 'Request failed';
   }
-  return msg;
+
+  final data = response.data;
+  if (data is Map<String, dynamic>) {
+    final errorField = data['error'];
+    if (errorField is Map<String, dynamic>) {
+      final message = errorField['message'] as String?;
+      final code = errorField['code'] as Object?;
+      if (message != null && message.isNotEmpty) {
+        return code != null ? '$message (code: $code)' : message;
+      }
+    }
+    final message = data['message'] as String?;
+    if (message != null && message.isNotEmpty) {
+      return message;
+    }
+  }
+
+  if (data is String && data.isNotEmpty) {
+    return data;
+  }
+
+  return 'HTTP ${response.statusCode}: ${response.statusMessage ?? error.message ?? 'Request failed'}';
 }
+
+Map<String, dynamic> _formatOpenAIMessage(UnifiedMessage m) {
+  if (m.content is String) {
+    return {'role': m.role.name, 'content': m.content};
+  }
+
+  final blocks = m.blocks;
+  final textBlocks = blocks.where((b) => b.type == 'text').toList();
+  final toolUseBlocks = blocks.where((b) => b.type == 'tool_use').toList();
+  final toolResultBlocks = blocks.where((b) => b.type == 'tool_result').toList();
+
+  if (toolResultBlocks.isNotEmpty) {
+    final resultBlock = toolResultBlocks.first;
+    return {
+      'role': 'tool',
+      'tool_call_id': resultBlock.toolCallId,
+      'content': resultBlock.toolResultContent ?? '',
+    };
+  }
+
+  if (toolUseBlocks.isNotEmpty && m.role == MessageRole.assistant) {
+    return {
+      'role': 'assistant',
+      'content': textBlocks.isEmpty
+          ? null
+          : textBlocks.map((b) => b.text ?? '').join('\n'),
+      'tool_calls': toolUseBlocks
+          .map(
+            (b) => {
+              'id': b.toolCallId,
+              'type': 'function',
+              'function': {
+                'name': b.toolName,
+                'arguments': jsonEncode(b.toolInput ?? {}),
+              },
+            },
+          )
+          .toList(),
+    };
+  }
+
+  return {
+    'role': m.role.name,
+    'content': textBlocks.isEmpty
+        ? m.textContent
+        : textBlocks.map((b) => b.text ?? '').join('\n'),
+  };
+}
+
 
 // ──────────────── Anthropic Messages ────────────────
 
 Stream<StreamEvent> _sendAnthropic(
-  List<UnifiedMessage> messages, ProviderConfig config,
-  List<ToolDefinition> tools, CancelToken? cancelToken,
+  List<UnifiedMessage> messages,
+  ProviderConfig config,
+  List<ToolDefinition> tools,
+  CancelToken? cancelToken,
 ) async* {
   final dio = Dio();
-  final baseUrl = (config.baseUrl ?? 'https://api.anthropic.com').replaceAll(RegExp(r'/+$'), '');
+  final baseUrl = (config.baseUrl ?? 'https://api.anthropic.com').replaceAll(
+    RegExp(r'/+$'),
+    '',
+  );
   final url = '$baseUrl/v1/messages';
 
   // Separate system message
@@ -202,9 +315,40 @@ Stream<StreamEvent> _sendAnthropic(
       systemPrompt = m.textContent;
       continue;
     }
+    if (m.content is String) {
+      apiMessages.add({
+        'role': m.role == MessageRole.assistant ? 'assistant' : 'user',
+        'content': m.textContent,
+      });
+      continue;
+    }
+
+    final blocks = m.blocks;
     apiMessages.add({
       'role': m.role == MessageRole.assistant ? 'assistant' : 'user',
-      'content': m.textContent,
+      'content': blocks.map((b) {
+        switch (b.type) {
+          case 'thinking':
+            return {'type': 'thinking', 'thinking': b.thinking};
+          case 'tool_use':
+            return {
+              'type': 'tool_use',
+              'id': b.toolCallId,
+              'name': b.toolName,
+              'input': b.toolInput ?? <String, dynamic>{},
+            };
+          case 'tool_result':
+            return {
+              'type': 'tool_result',
+              'tool_use_id': b.toolCallId,
+              'content': b.toolResultContent ?? '',
+              if (b.isError == true) 'is_error': true,
+            };
+          case 'text':
+          default:
+            return {'type': 'text', 'text': b.text ?? ''};
+        }
+      }).toList(),
     });
   }
 
@@ -218,11 +362,22 @@ Stream<StreamEvent> _sendAnthropic(
     body['system'] = systemPrompt;
   }
   if (tools.isNotEmpty) {
-    body['tools'] = tools.map((t) => {
-      'name': t.name,
-      'description': t.description,
-      'input_schema': t.inputSchema,
-    }).toList();
+    body['tools'] = tools
+        .map(
+          (t) => {
+            'name': t.name,
+            'description': t.description,
+            'input_schema': t.inputSchema,
+          },
+        )
+        .toList();
+    body['tool_choice'] = {'type': 'auto'};
+  }
+  if (config.thinkingEnabled) {
+    body['thinking'] = {
+      'type': 'enabled',
+      'budget_tokens': config.maxTokens > 4096 ? 4096 : config.maxTokens,
+    };
   }
 
   yield const StreamEvent(type: StreamEventType.messageStart);
@@ -268,7 +423,8 @@ Stream<StreamEvent> _sendAnthropic(
                 toolArgsBuf.clear();
                 yield StreamEvent(
                   type: StreamEventType.toolCallStart,
-                  toolCallId: currentToolId, toolName: block['name'] as String?,
+                  toolCallId: currentToolId,
+                  toolName: block['name'] as String?,
                 );
               }
               break;
@@ -289,17 +445,21 @@ Stream<StreamEvent> _sendAnthropic(
                 toolArgsBuf.write(partial);
                 yield StreamEvent(
                   type: StreamEventType.toolCallDelta,
-                  toolCallId: currentToolId, argumentsDelta: partial,
+                  toolCallId: currentToolId,
+                  argumentsDelta: partial,
                 );
               }
               break;
             case 'content_block_stop':
               if (currentToolId != null) {
                 Map<String, dynamic>? input;
-                try { input = jsonDecode(toolArgsBuf.toString()); } catch (_) {}
+                try {
+                  input = jsonDecode(toolArgsBuf.toString());
+                } catch (_) {}
                 yield StreamEvent(
                   type: StreamEventType.toolCallEnd,
-                  toolCallId: currentToolId, toolCallInput: input,
+                  toolCallId: currentToolId,
+                  toolCallInput: input,
                 );
                 currentToolId = null;
                 toolArgsBuf.clear();
@@ -311,10 +471,12 @@ Stream<StreamEvent> _sendAnthropic(
               yield StreamEvent(
                 type: StreamEventType.messageEnd,
                 stopReason: delta?['stop_reason'] as String?,
-                usage: usage != null ? TokenUsage(
-                  inputTokens: usage['input_tokens'] as int? ?? 0,
-                  outputTokens: usage['output_tokens'] as int? ?? 0,
-                ) : null,
+                usage: usage != null
+                    ? TokenUsage(
+                        inputTokens: usage['input_tokens'] as int? ?? 0,
+                        outputTokens: usage['output_tokens'] as int? ?? 0,
+                      )
+                    : null,
               );
               break;
           }
