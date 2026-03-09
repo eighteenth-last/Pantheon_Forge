@@ -4,6 +4,7 @@ import 'dart:convert';
 
 enum ProviderType {
   openai('openai'),
+  openaiResponses('openai-responses'),
   anthropic('anthropic');
 
   const ProviderType(this.value);

@@ -6,6 +6,7 @@ import 'package:pantheon_forge/providers/app_providers.dart';
 import 'package:pantheon_forge/core/l10n/translations.dart';
 import 'package:pantheon_forge/models/models.dart';
 import 'package:pantheon_forge/services/agent/chat_service.dart';
+import 'package:pantheon_forge/ui/common/app_message.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
 
@@ -499,10 +500,10 @@ class _CollapsibleToolCardState extends State<_CollapsibleToolCard> {
   }
 }
 
-
 bool _isToolResultOnlyMessage(UnifiedMessage message) {
   final blocks = message.blocks;
-  return blocks.isNotEmpty && blocks.every((block) => block.type == 'tool_result');
+  return blocks.isNotEmpty &&
+      blocks.every((block) => block.type == 'tool_result');
 }
 
 bool _hasVisibleAssistantContent(UnifiedMessage message) {
@@ -586,8 +587,7 @@ class _AdvancedModelSwitcher extends ConsumerStatefulWidget {
 
 class _AdvancedModelSwitcherState
     extends ConsumerState<_AdvancedModelSwitcher> {
-  final OverlayPortalController _overlayController =
-      OverlayPortalController();
+  final OverlayPortalController _overlayController = OverlayPortalController();
   final LayerLink _layerLink = LayerLink();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -648,8 +648,11 @@ class _AdvancedModelSwitcherState
     final providerState = ref.watch(providerProvider);
     final activeProvider = providerState.activeProvider;
     final activeModel = providerState.activeModel;
-    final hasCustomPrompt =
-        ref.watch(settingsProvider).settings.systemPrompt.isNotEmpty;
+    final hasCustomPrompt = ref
+        .watch(settingsProvider)
+        .settings
+        .systemPrompt
+        .isNotEmpty;
     final enabledProviders = providerState.providers
         .where((provider) => provider.enabled)
         .toList();
@@ -663,8 +666,8 @@ class _AdvancedModelSwitcherState
             if (query.isEmpty) {
               return true;
             }
-            final name =
-                (model.name.isNotEmpty ? model.name : model.id).toLowerCase();
+            final name = (model.name.isNotEmpty ? model.name : model.id)
+                .toLowerCase();
             return name.contains(query) ||
                 model.id.toLowerCase().contains(query) ||
                 provider.name.toLowerCase().contains(query);
@@ -703,8 +706,9 @@ class _AdvancedModelSwitcherState
                       color: colorScheme.surface,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color:
-                            colorScheme.outlineVariant.withValues(alpha: 0.28),
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.28,
+                        ),
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -756,8 +760,9 @@ class _AdvancedModelSwitcherState
                                   .withValues(alpha: 0.42),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: colorScheme.outlineVariant
-                                    .withValues(alpha: 0.35),
+                                color: colorScheme.outlineVariant.withValues(
+                                  alpha: 0.35,
+                                ),
                               ),
                             ),
                             child: Row(
@@ -765,8 +770,9 @@ class _AdvancedModelSwitcherState
                                 Icon(
                                   Icons.search,
                                   size: 16,
-                                  color: colorScheme.onSurface
-                                      .withValues(alpha: 0.55),
+                                  color: colorScheme.onSurface.withValues(
+                                    alpha: 0.55,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
@@ -797,8 +803,9 @@ class _AdvancedModelSwitcherState
                                           : '没有匹配的模型',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: colorScheme.onSurface
-                                            .withValues(alpha: 0.55),
+                                        color: colorScheme.onSurface.withValues(
+                                          alpha: 0.55,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -841,7 +848,9 @@ class _AdvancedModelSwitcherState
                                                     fontWeight: FontWeight.w700,
                                                     letterSpacing: 0.6,
                                                     color: colorScheme.onSurface
-                                                        .withValues(alpha: 0.55),
+                                                        .withValues(
+                                                          alpha: 0.55,
+                                                        ),
                                                   ),
                                                 ),
                                               ],
@@ -849,7 +858,8 @@ class _AdvancedModelSwitcherState
                                           ),
                                           ...models.map((model) {
                                             final isActive =
-                                                providerState.activeProviderId ==
+                                                providerState
+                                                        .activeProviderId ==
                                                     provider.id &&
                                                 providerState.activeModelId ==
                                                     model.id;
@@ -863,7 +873,8 @@ class _AdvancedModelSwitcherState
                                                 onTap: () {
                                                   ref
                                                       .read(
-                                                        providerProvider.notifier,
+                                                        providerProvider
+                                                            .notifier,
                                                       )
                                                       .setActive(
                                                         provider.id,
@@ -872,34 +883,38 @@ class _AdvancedModelSwitcherState
                                                   _closePanel();
                                                 },
                                                 child: Container(
-                                                  padding:
-                                                      const EdgeInsets.all(10),
+                                                  padding: const EdgeInsets.all(
+                                                    10,
+                                                  ),
                                                   decoration: BoxDecoration(
                                                     color: isActive
                                                         ? colorScheme.primary
-                                                            .withValues(
-                                                              alpha: 0.08,
-                                                            )
+                                                              .withValues(
+                                                                alpha: 0.08,
+                                                              )
                                                         : colorScheme
-                                                            .surfaceContainerLow,
+                                                              .surfaceContainerLow,
                                                     borderRadius:
-                                                        BorderRadius.circular(14),
+                                                        BorderRadius.circular(
+                                                          14,
+                                                        ),
                                                     border: Border.all(
                                                       color: isActive
                                                           ? colorScheme.primary
-                                                              .withValues(
-                                                                alpha: 0.35,
-                                                              )
+                                                                .withValues(
+                                                                  alpha: 0.35,
+                                                                )
                                                           : colorScheme
-                                                              .outlineVariant
-                                                              .withValues(
-                                                                alpha: 0.25,
-                                                              ),
+                                                                .outlineVariant
+                                                                .withValues(
+                                                                  alpha: 0.25,
+                                                                ),
                                                     ),
                                                   ),
                                                   child: Row(
                                                     crossAxisAlignment:
-                                                        CrossAxisAlignment.start,
+                                                        CrossAxisAlignment
+                                                            .start,
                                                     children: [
                                                       Container(
                                                         width: 22,
@@ -907,13 +922,15 @@ class _AdvancedModelSwitcherState
                                                         decoration: BoxDecoration(
                                                           color: isActive
                                                               ? colorScheme
-                                                                  .primary
-                                                                  .withValues(
-                                                                    alpha: 0.12,
-                                                                  )
+                                                                    .primary
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.12,
+                                                                    )
                                                               : colorScheme
-                                                                  .surfaceContainerHighest,
-                                                          shape: BoxShape.circle,
+                                                                    .surfaceContainerHighest,
+                                                          shape:
+                                                              BoxShape.circle,
                                                         ),
                                                         alignment:
                                                             Alignment.center,
@@ -1150,9 +1167,7 @@ class _AdvancedModelSwitcherState
     WidgetRef ref,
     AIModelConfig model,
   ) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('模型设置面板稍后继续优化')),
-    );
+    AppMessage.info(context, '模型设置面板稍后继续优化');
   }
 }
 
@@ -1359,7 +1374,7 @@ class _InputAreaState extends ConsumerState<_InputArea> {
 
   Future<void> _handleImagePaste() async {
     try {
-      // 简单的截图粘贴实现 - 模拟从剪切板获取截图
+      // 简单的截图粘贴实现 - 模拟从剪贴板获取截图
       final imageId = _imageUuid.v4();
       final attachment = ImageAttachment(
         id: imageId,
@@ -1372,14 +1387,9 @@ class _InputAreaState extends ConsumerState<_InputArea> {
       setState(() {
         _attachedImages.add(attachment);
       });
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('截图已粘贴')));
+      AppMessage.success(context, '截图已粘贴');
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('粘贴截图失败: $e')));
+      AppMessage.error(context, '粘贴截图失败: $e');
     }
   }
 
@@ -1387,6 +1397,85 @@ class _InputAreaState extends ConsumerState<_InputArea> {
     setState(() {
       _attachedImages.removeWhere((img) => img.id == id);
     });
+  }
+
+  Uint8List? _decodeImageData(String dataUrl) {
+    final commaIndex = dataUrl.indexOf(',');
+    if (commaIndex <= 0 || commaIndex >= dataUrl.length - 1) return null;
+    try {
+      return base64Decode(dataUrl.substring(commaIndex + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildImageAttachmentChip(ImageAttachment image) {
+    final bytes = _decodeImageData(image.dataUrl);
+    return Container(
+      width: 56,
+      height: 56,
+      margin: const EdgeInsets.only(right: 8),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: widget.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.55,
+              ),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: widget.colorScheme.outlineVariant.withValues(alpha: 0.6),
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: bytes != null
+                  ? Image.memory(
+                      bytes,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Icon(
+                        Icons.image_outlined,
+                        size: 20,
+                        color: widget.colorScheme.onSurface.withValues(
+                          alpha: 0.55,
+                        ),
+                      ),
+                    )
+                  : Icon(
+                      Icons.image_outlined,
+                      size: 20,
+                      color: widget.colorScheme.onSurface.withValues(
+                        alpha: 0.55,
+                      ),
+                    ),
+            ),
+          ),
+          Positioned(
+            right: -5,
+            top: -5,
+            child: GestureDetector(
+              onTap: () => _removeImage(image.id),
+              child: Container(
+                width: 17,
+                height: 17,
+                decoration: BoxDecoration(
+                  color: widget.colorScheme.error,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: widget.colorScheme.surface,
+                    width: 1.5,
+                  ),
+                ),
+                child: const Icon(Icons.close, size: 10, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _clearMessages() {
@@ -1482,58 +1571,15 @@ class _InputAreaState extends ConsumerState<_InputArea> {
 
               // 图片预览
               if (_attachedImages.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 0,
+                      runSpacing: 8,
                       children: _attachedImages
-                          .map(
-                            (img) => Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              child: Stack(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Container(
-                                      width: 64,
-                                      height: 64,
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: widget
-                                              .colorScheme
-                                              .outlineVariant
-                                              .withValues(alpha: 0.6),
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(Icons.image, size: 24),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    right: -6,
-                                    top: -6,
-                                    child: GestureDetector(
-                                      onTap: () => _removeImage(img.id),
-                                      child: Container(
-                                        width: 20,
-                                        height: 20,
-                                        decoration: BoxDecoration(
-                                          color: widget.colorScheme.error,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.close,
-                                          size: 12,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
+                          .map((image) => _buildImageAttachmentChip(image))
                           .toList(),
                     ),
                   ),

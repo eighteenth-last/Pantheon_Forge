@@ -1,0 +1,23 @@
+{
+  "sessionId": "d29986e3-e8a0-4756-afc4-ca63fec472f9",
+  "updatedAt": 1773029692286,
+  "messages": [
+    {
+      "id": "bdfcbf57-99e0-40a4-a944-5e6f8f032a3f",
+      "role": "user",
+      "content": "你好",
+      "createdAt": 1773029690466
+    },
+    {
+      "id": "be0dd817-6aa3-4740-af9e-17c676bbf095",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "你好呀！✨ 很高兴见到你！今天过得怎么样呀？希望你度过了愉快的一天。我随时准备好陪你聊天、帮你解决问题，或者就这样轻松愉快地闲聊一会儿。有什么想跟我分享的吗？ 🌟"
+        }
+      ],
+      "createdAt": 1773029690476
+    }
+  ]
+}

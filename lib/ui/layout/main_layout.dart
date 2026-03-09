@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pantheon_forge/providers/app_providers.dart';
-import 'package:pantheon_forge/core/l10n/translations.dart';
 import 'package:pantheon_forge/ui/layout/nav_rail.dart';
 import 'package:pantheon_forge/ui/layout/session_list_panel.dart';
 import 'package:pantheon_forge/ui/layout/title_bar.dart';
@@ -10,6 +9,7 @@ import 'package:pantheon_forge/ui/chat/chat_view.dart';
 import 'package:pantheon_forge/ui/settings/settings_page.dart';
 import 'package:pantheon_forge/ui/cowork/right_panel.dart';
 import 'package:pantheon_forge/ui/ssh/ssh_page.dart';
+import 'package:pantheon_forge/ui/skills/skills_page.dart';
 
 class MainLayout extends ConsumerWidget {
   const MainLayout({super.key});
@@ -18,8 +18,6 @@ class MainLayout extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final ui = ref.watch(uiProvider);
     final chat = ref.watch(chatProvider);
-    final settings = ref.watch(settingsProvider).settings;
-    final locale = settings.language;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     
@@ -56,7 +54,7 @@ class MainLayout extends ConsumerWidget {
 
                     // Main Content
                     Expanded(
-                      child: _buildMainContent(ui, locale, colorScheme),
+                      child: _buildMainContent(ui),
                     ),
 
                     // Right Panel
@@ -72,21 +70,12 @@ class MainLayout extends ConsumerWidget {
     );
   }
 
-  Widget _buildMainContent(UIState ui, String locale, ColorScheme colorScheme) {
+  Widget _buildMainContent(UIState ui) {
     if (ui.settingsPageOpen) {
       return const SettingsPage();
     }
     if (ui.skillsPageOpen) {
-      return Center(
-        child: Text(t('nav.skills', locale),
-          style: TextStyle(color: colorScheme.onSurfaceVariant)),
-      );
-    }
-    if (ui.translatePageOpen) {
-      return Center(
-        child: Text(t('nav.translate', locale),
-          style: TextStyle(color: colorScheme.onSurfaceVariant)),
-      );
+      return const SkillsPage();
     }
     if (ui.sshPageOpen) {
       return const SshPage();

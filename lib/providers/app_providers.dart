@@ -68,7 +68,7 @@ final settingsProvider = ChangeNotifierProvider<SettingsNotifier>((ref) {
 
 enum AppMode { agent }
 
-enum NavItem { chat, skills, translate, ssh }
+enum NavItem { chat, skills, ssh }
 
 enum ChatView { home, session }
 
@@ -95,7 +95,6 @@ class UIState {
   final bool settingsPageOpen;
   final SettingsTab settingsTab;
   final bool skillsPageOpen;
-  final bool translatePageOpen;
   final bool sshPageOpen;
   final bool sshSidebarOpen;
 
@@ -109,7 +108,6 @@ class UIState {
     this.settingsPageOpen = false,
     this.settingsTab = SettingsTab.general,
     this.skillsPageOpen = false,
-    this.translatePageOpen = false,
     this.sshPageOpen = false,
     this.sshSidebarOpen = true,
   });
@@ -124,7 +122,6 @@ class UIState {
     bool? settingsPageOpen,
     SettingsTab? settingsTab,
     bool? skillsPageOpen,
-    bool? translatePageOpen,
     bool? sshPageOpen,
     bool? sshSidebarOpen,
   }) => UIState(
@@ -137,7 +134,6 @@ class UIState {
     settingsPageOpen: settingsPageOpen ?? this.settingsPageOpen,
     settingsTab: settingsTab ?? this.settingsTab,
     skillsPageOpen: skillsPageOpen ?? this.skillsPageOpen,
-    translatePageOpen: translatePageOpen ?? this.translatePageOpen,
     sshPageOpen: sshPageOpen ?? this.sshPageOpen,
     sshSidebarOpen: sshSidebarOpen ?? this.sshSidebarOpen,
   );
@@ -162,7 +158,6 @@ class UINotifier extends StateNotifier<UIState> {
     chatView: ChatView.home,
     settingsPageOpen: false,
     skillsPageOpen: false,
-    translatePageOpen: false,
     sshPageOpen: false,
   );
 
@@ -170,7 +165,6 @@ class UINotifier extends StateNotifier<UIState> {
     chatView: ChatView.session,
     settingsPageOpen: false,
     skillsPageOpen: false,
-    translatePageOpen: false,
     sshPageOpen: false,
   );
 
@@ -178,7 +172,6 @@ class UINotifier extends StateNotifier<UIState> {
     settingsPageOpen: true,
     settingsTab: tab ?? SettingsTab.general,
     skillsPageOpen: false,
-    translatePageOpen: false,
     sshPageOpen: false,
     leftSidebarOpen: false,
   );
@@ -191,28 +184,17 @@ class UINotifier extends StateNotifier<UIState> {
   void openSkills() => state = state.copyWith(
     skillsPageOpen: true,
     settingsPageOpen: false,
-    translatePageOpen: false,
     sshPageOpen: false,
     leftSidebarOpen: false,
   );
 
-  void closeSkills() => state = state.copyWith(skillsPageOpen: false);
-
-  void openTranslate() => state = state.copyWith(
-    translatePageOpen: true,
-    settingsPageOpen: false,
-    skillsPageOpen: false,
-    sshPageOpen: false,
-    leftSidebarOpen: false,
-  );
-
-  void closeTranslate() => state = state.copyWith(translatePageOpen: false);
+  void closeSkills() =>
+      state = state.copyWith(skillsPageOpen: false, leftSidebarOpen: true);
 
   void openSsh() => state = state.copyWith(
     sshPageOpen: true,
     settingsPageOpen: false,
     skillsPageOpen: false,
-    translatePageOpen: false,
     leftSidebarOpen: false,
   );
 
@@ -224,10 +206,6 @@ class UINotifier extends StateNotifier<UIState> {
   void setNavItem(NavItem item) {
     if (item == NavItem.skills) {
       openSkills();
-      return;
-    }
-    if (item == NavItem.translate) {
-      openTranslate();
       return;
     }
     if (item == NavItem.ssh) {
@@ -244,7 +222,6 @@ class UINotifier extends StateNotifier<UIState> {
       activeNavItem: item,
       settingsPageOpen: false,
       skillsPageOpen: false,
-      translatePageOpen: false,
       sshPageOpen: false,
       leftSidebarOpen: true,
     );
@@ -295,7 +272,7 @@ class ProviderNotifier extends ChangeNotifier {
     final model = activeModel;
     if (prov == null || model == null) return null;
     return ProviderConfig(
-      type: prov.type,
+      type: model.type ?? prov.type,
       apiKey: prov.apiKey,
       baseUrl: prov.baseUrl.isNotEmpty ? prov.baseUrl : null,
       model: model.id,
@@ -581,6 +558,34 @@ class ChatNotifier extends ChangeNotifier {
     loadMessages(id);
     // Save last active session
     AppDatabase.instance.setSetting('lastActiveSessionId', id);
+    notifyListeners();
+  }
+
+  void updateSessionModelSelection(
+    String sessionId, {
+    required String providerId,
+    required String modelId,
+  }) {
+    AppDatabase.instance.db.execute(
+      'UPDATE sessions SET provider_id = ?, model_id = ?, updated_at = ? WHERE id = ?',
+      [
+        providerId,
+        modelId,
+        DateTime.now().millisecondsSinceEpoch,
+        sessionId,
+      ],
+    );
+    _sessions = _sessions
+        .map(
+          (session) => session.id == sessionId
+              ? session.copyWith(
+                  providerId: providerId,
+                  modelId: modelId,
+                  updatedAt: DateTime.now().millisecondsSinceEpoch,
+                )
+              : session,
+        )
+        .toList();
     notifyListeners();
   }
 

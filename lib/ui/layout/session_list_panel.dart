@@ -138,6 +138,13 @@ class SessionListPanel extends ConsumerWidget {
                         locale: locale,
                         colorScheme: colorScheme,
                         onTap: () {
+                          if (session.providerId != null &&
+                              session.modelId != null) {
+                            ref.read(providerProvider.notifier).setActive(
+                              session.providerId as String,
+                              session.modelId as String,
+                            );
+                          }
                           ref.read(chatProvider).setActiveSession(session.id);
                           ref.read(uiProvider.notifier).navigateToSession();
                         },

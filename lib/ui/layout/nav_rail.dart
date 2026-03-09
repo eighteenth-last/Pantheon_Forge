@@ -9,7 +9,6 @@ class AppNavRail extends ConsumerWidget {
   static const _navItems = [
     (NavItem.chat, Icons.chat_bubble_outline, 'nav.conversations'),
     (NavItem.skills, Icons.auto_fix_high, 'nav.skills'),
-    (NavItem.translate, Icons.translate, 'nav.translate'),
     (NavItem.ssh, Icons.terminal, 'nav.ssh'),
   ];
 
@@ -68,10 +67,9 @@ class AppNavRail extends ConsumerWidget {
 
   bool _isActive(UIState ui, NavItem item) {
     if (item == NavItem.skills) return ui.skillsPageOpen;
-    if (item == NavItem.translate) return ui.translatePageOpen;
     if (item == NavItem.ssh) return ui.sshPageOpen;
     return ui.activeNavItem == item && ui.leftSidebarOpen &&
-        !ui.settingsPageOpen && !ui.skillsPageOpen && !ui.translatePageOpen && !ui.sshPageOpen;
+        !ui.settingsPageOpen && !ui.skillsPageOpen && !ui.sshPageOpen;
   }
 }
 
