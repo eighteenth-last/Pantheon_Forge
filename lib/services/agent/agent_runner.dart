@@ -56,6 +56,7 @@ Future<void> runAgentLoop({
 }) async {
   var previousToolResults = <AgentExecutedToolCall>[];
   final executedCallCounts = <String, int>{};
+  var consecutiveEmptyIterations = 0;
 
   for (var iteration = 0; iteration < 6; iteration++) {
     final assistantId = _uuid.v4();
@@ -139,6 +140,24 @@ Future<void> runAgentLoop({
       conversation.add(toolMessage);
     }
     previousToolResults = toolResults;
+
+    // 检测连续空迭代（工具调用但没有实际执行）
+    if (toolResults.isEmpty && repeatedCalls.isEmpty) {
+      consecutiveEmptyIterations++;
+      if (consecutiveEmptyIterations >= 2) {
+        final fallback = UnifiedMessage(
+          id: _uuid.v4(),
+          role: MessageRole.assistant,
+          content: '检测到循环调用，已自动停止。请提供更具体的文件路径或操作指令。',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        );
+        onMessageAdded(fallback);
+        conversation.add(fallback);
+        break;
+      }
+    } else {
+      consecutiveEmptyIterations = 0;
+    }
 
     if (toolResults.isEmpty && repeatedCalls.isNotEmpty) {
       final fallback = UnifiedMessage(

@@ -9,9 +9,10 @@ class PantheonForgeApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider).settings;
+    // 优化：只监听主题设置
+    final theme = ref.watch(settingsProvider.select((s) => s.settings.theme));
 
-    final themeMode = switch (settings.theme) {
+    final themeMode = switch (theme) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
       _ => ThemeMode.system,
@@ -24,6 +25,14 @@ class PantheonForgeApp extends ConsumerWidget {
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
       home: const MainLayout(),
+      // 添加性能优化配置
+      builder: (context, child) {
+        return MediaQuery(
+          // 禁用文本缩放，提高性能
+          data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
+          child: child!,
+        );
+      },
     );
   }
 }

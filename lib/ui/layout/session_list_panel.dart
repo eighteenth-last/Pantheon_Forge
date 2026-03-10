@@ -40,10 +40,11 @@ class SessionListPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final chat = ref.watch(chatProvider);
-    final locale = ref.watch(settingsProvider).settings.language;
+    // 优化：只监听需要的字段
+    final sessions = ref.watch(chatProvider.select((chat) => chat.sessions));
+    final activeSessionId = ref.watch(chatProvider.select((chat) => chat.activeSessionId));
+    final locale = ref.watch(settingsProvider.select((s) => s.settings.language));
     final colorScheme = Theme.of(context).colorScheme;
-    final sessions = chat.sessions;
 
     return Container(
       width: 240,
@@ -126,34 +127,41 @@ class SessionListPanel extends ConsumerWidget {
                       ),
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    itemCount: sessions.length,
-                    itemBuilder: (context, index) {
-                      final session = sessions[index];
-                      final isActive = session.id == chat.activeSessionId;
-                      return _SessionTile(
-                        session: session,
-                        isActive: isActive,
-                        locale: locale,
-                        colorScheme: colorScheme,
-                        onTap: () {
-                          if (session.providerId != null &&
-                              session.modelId != null) {
-                            ref.read(providerProvider.notifier).setActive(
-                              session.providerId as String,
-                              session.modelId as String,
-                            );
-                          }
-                          ref.read(chatProvider).setActiveSession(session.id);
-                          ref.read(uiProvider.notifier).navigateToSession();
-                        },
-                        onDelete: () =>
-                            ref.read(chatProvider).deleteSession(session.id),
-                        onTogglePin: () =>
-                            ref.read(chatProvider).togglePin(session.id),
-                      );
-                    },
+                : RepaintBoundary(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      itemCount: sessions.length,
+                      // 添加缓存范围以提高滚动性能
+                      cacheExtent: 300,
+                      itemBuilder: (context, index) {
+                        final session = sessions[index];
+                        final isActive = session.id == activeSessionId;
+                        return RepaintBoundary(
+                          child: _SessionTile(
+                            key: ValueKey(session.id),
+                            session: session,
+                            isActive: isActive,
+                            locale: locale,
+                            colorScheme: colorScheme,
+                            onTap: () {
+                              if (session.providerId != null &&
+                                  session.modelId != null) {
+                                ref.read(providerProvider.notifier).setActive(
+                                  session.providerId as String,
+                                  session.modelId as String,
+                                );
+                              }
+                              ref.read(chatProvider).setActiveSession(session.id);
+                              ref.read(uiProvider.notifier).navigateToSession();
+                            },
+                            onDelete: () =>
+                                ref.read(chatProvider).deleteSession(session.id),
+                            onTogglePin: () =>
+                                ref.read(chatProvider).togglePin(session.id),
+                          ),
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
@@ -172,6 +180,7 @@ class _SessionTile extends StatefulWidget {
   final VoidCallback onTogglePin;
 
   const _SessionTile({
+    super.key,
     required this.session,
     required this.isActive,
     required this.locale,

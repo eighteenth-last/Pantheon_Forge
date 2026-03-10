@@ -19,9 +19,9 @@ class CoworkRightPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ui = ref.watch(uiProvider);
-    final settings = ref.watch(settingsProvider).settings;
-    final locale = settings.language;
+    // 优化：只监听需要的字段
+    final rightPanelTab = ref.watch(uiProvider.select((ui) => ui.rightPanelTab));
+    final locale = ref.watch(settingsProvider.select((s) => s.settings.language));
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
@@ -47,7 +47,7 @@ class CoworkRightPanel extends ConsumerWidget {
                     _PanelTab(
                       icon: icon,
                       label: t(labelKey, locale),
-                      isActive: ui.rightPanelTab == tab,
+                      isActive: rightPanelTab == tab,
                       onTap: () => ref.read(uiProvider.notifier).setRightPanelTab(tab),
                       colorScheme: colorScheme,
                     ),
@@ -67,7 +67,7 @@ class CoworkRightPanel extends ConsumerWidget {
 
           // Panel content
           Expanded(
-            child: _buildPanelContent(ui.rightPanelTab, locale, colorScheme),
+            child: _buildPanelContent(rightPanelTab, locale, colorScheme),
           ),
         ],
       ),

@@ -8,24 +8,75 @@ import 'package:pantheon_forge/providers/skills_provider.dart';
 import 'package:pantheon_forge/services/skills/skills_service.dart';
 import 'package:pantheon_forge/ui/common/app_message.dart';
 
-class SkillsPage extends ConsumerWidget {
+class SkillsPage extends ConsumerStatefulWidget {
   const SkillsPage({super.key});
 
   @override
+  ConsumerState<SkillsPage> createState() => _SkillsPageState();
+}
+
+class _SkillsPageState extends ConsumerState<SkillsPage> {
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 使用 microtask 延迟初始化，不阻塞 UI
+    Future.microtask(() {
+      if (mounted) {
+        setState(() {
+          _initialized = true;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_initialized) {
+      // 显示加载占位符，避免阻塞
+      return Center(
+        child: CircularProgressIndicator(
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      );
+    }
+
+    return const _SkillsPageContent();
+  }
+}
+
+class _SkillsPageContent extends ConsumerWidget {
+  const _SkillsPageContent();
+
+  @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final locale = ref.watch(settingsProvider).settings.language;
+    // 优化：只监听需要的字段
+    final locale = ref.watch(settingsProvider.select((s) => s.settings.language));
     final colorScheme = Theme.of(context).colorScheme;
-    final skillsState = ref.watch(skillsProvider);
+    final activeTab = ref.watch(skillsProvider.select((s) => s.activeTab));
+    final searchQuery = ref.watch(skillsProvider.select((s) => s.searchQuery));
+    final marketQuery = ref.watch(skillsProvider.select((s) => s.marketQuery));
+    final marketApiKey = ref.watch(skillsProvider.select((s) => s.marketApiKey));
+    
+    // Market 相关字段
+    final marketSkills = ref.watch(skillsProvider.select((s) => s.marketSkills));
+    final marketLoading = ref.watch(skillsProvider.select((s) => s.marketLoading));
+    final hasMoreMarketSkills = ref.watch(skillsProvider.select((s) => s.hasMoreMarketSkills));
+    
+    // Installed 相关字段
+    final skills = ref.watch(skillsProvider.select((s) => s.skills));
+    final skillsState = ref.watch(skillsProvider); // 用于传递给 _SkillsInstalledView
 
     return Column(
       children: [
         _SkillsTopBar(
           locale: locale,
           colorScheme: colorScheme,
-          activeTab: skillsState.activeTab,
-          installedQuery: skillsState.searchQuery,
-          marketQuery: skillsState.marketQuery,
-          marketApiKey: skillsState.marketApiKey,
+          activeTab: activeTab,
+          installedQuery: searchQuery,
+          marketQuery: marketQuery,
+          marketApiKey: marketApiKey,
           onBack: () => ref.read(uiProvider.notifier).closeSkills(),
           onTabChanged: (tab) => ref.read(skillsProvider).setActiveTab(tab),
           onInstalledQueryChanged: (value) =>
@@ -35,7 +86,7 @@ class SkillsPage extends ConsumerWidget {
           onMarketApiKeyChanged: (value) =>
               ref.read(skillsProvider).setMarketApiKey(value),
           onReload: () {
-            if (skillsState.activeTab == SkillsTab.market) {
+            if (activeTab == SkillsTab.market) {
               ref.read(skillsProvider).loadMarketSkills(reset: true);
             } else {
               ref.read(skillsProvider).loadSkills();
@@ -46,16 +97,16 @@ class SkillsPage extends ConsumerWidget {
               ref.read(skillsProvider).openSkillsMarketDocs(),
         ),
         Expanded(
-          child: skillsState.activeTab == SkillsTab.market
+          child: activeTab == SkillsTab.market
               ? _SkillsMarketView(
                   locale: locale,
                   colorScheme: colorScheme,
-                  query: skillsState.marketQuery,
-                  apiKeyConfigured: skillsState.marketApiKey.isNotEmpty,
-                  skills: skillsState.marketSkills,
-                  loading: skillsState.marketLoading,
-                  hasMore: skillsState.hasMoreMarketSkills,
-                  installedNames: skillsState.skills
+                  query: marketQuery,
+                  apiKeyConfigured: marketApiKey.isNotEmpty,
+                  skills: marketSkills,
+                  loading: marketLoading,
+                  hasMore: hasMoreMarketSkills,
+                  installedNames: skills
                       .map((skill) => skill.name.toLowerCase())
                       .toSet(),
                   isInstalling: (id) => skillsState.isMarketSkillInstalling(id),
@@ -250,54 +301,65 @@ class _SkillsTopBar extends StatelessWidget {
             showSelectedIcon: false,
             onSelectionChanged: (value) => onTabChanged(value.first),
           ),
-          const Spacer(),
-          SizedBox(
-            width: 220,
-            child: _SyncTextField(
-              value: activeTab == SkillsTab.market
-                  ? marketQuery
-                  : installedQuery,
-              hintText: t('common.search', locale),
-              onChanged: activeTab == SkillsTab.market
-                  ? onMarketQueryChanged
-                  : onInstalledQueryChanged,
-              prefixIcon: const Icon(Icons.search, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 200),
+                    child: _SyncTextField(
+                      value: activeTab == SkillsTab.market
+                          ? marketQuery
+                          : installedQuery,
+                      hintText: t('common.search', locale),
+                      onChanged: activeTab == SkillsTab.market
+                          ? onMarketQueryChanged
+                          : onInstalledQueryChanged,
+                      prefixIcon: const Icon(Icons.search, size: 16),
+                    ),
+                  ),
+                ),
+                if (activeTab == SkillsTab.market) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 200),
+                      child: _SyncTextField(
+                        value: marketApiKey,
+                        hintText: t('skills.market.apiKeyPlaceholder', locale),
+                        onChanged: onMarketApiKeyChanged,
+                        prefixIcon: const Icon(Icons.key, size: 14),
+                        obscureText: true,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    tooltip: t('skills.market.docs', locale),
+                    onPressed: onOpenMarketDocs,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 18),
+                  tooltip: t('skills.page.reload', locale),
+                  onPressed: onReload,
+                  visualDensity: VisualDensity.compact,
+                ),
+                if (activeTab == SkillsTab.installed)
+                  FilledButton.tonalIcon(
+                    onPressed: onAddSkill,
+                    icon: const Icon(Icons.add, size: 15),
+                    label: Text(
+                      t('skills.page.add', locale),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (activeTab == SkillsTab.market) ...[
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 220,
-              child: _SyncTextField(
-                value: marketApiKey,
-                hintText: t('skills.market.apiKeyPlaceholder', locale),
-                onChanged: onMarketApiKeyChanged,
-                prefixIcon: const Icon(Icons.key, size: 14),
-                obscureText: true,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.open_in_new, size: 18),
-              tooltip: t('skills.market.docs', locale),
-              onPressed: onOpenMarketDocs,
-              visualDensity: VisualDensity.compact,
-            ),
-          ],
-          IconButton(
-            icon: const Icon(Icons.refresh, size: 18),
-            tooltip: t('skills.page.reload', locale),
-            onPressed: onReload,
-            visualDensity: VisualDensity.compact,
-          ),
-          if (activeTab == SkillsTab.installed)
-            FilledButton.tonalIcon(
-              onPressed: onAddSkill,
-              icon: const Icon(Icons.add, size: 15),
-              label: Text(
-                t('skills.page.add', locale),
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
         ],
       ),
     );
@@ -418,22 +480,29 @@ class _SkillsMarketView extends StatelessWidget {
             ),
           ),
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: skills.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final skill = skills[index];
-              return _MarketSkillTile(
-                locale: locale,
-                colorScheme: colorScheme,
-                skill: skill,
-                installed: installedNames.contains(skill.name.toLowerCase()),
-                installing: isInstalling(skill.id),
-                installProgress: installProgress(skill.id),
-                onInstall: () => onInstall(skill),
-              );
-            },
+          child: RepaintBoundary(
+            child: ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: skills.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              // 添加缓存范围以提高滚动性能
+              cacheExtent: 500,
+              itemBuilder: (context, index) {
+                final skill = skills[index];
+                return RepaintBoundary(
+                  child: _MarketSkillTile(
+                    key: ValueKey(skill.id),
+                    locale: locale,
+                    colorScheme: colorScheme,
+                    skill: skill,
+                    installed: installedNames.contains(skill.name.toLowerCase()),
+                    installing: isInstalling(skill.id),
+                    installProgress: installProgress(skill.id),
+                    onInstall: () => onInstall(skill),
+                  ),
+                );
+              },
+            ),
           ),
         ),
         if (hasMore)
@@ -461,6 +530,7 @@ class _SkillsMarketView extends StatelessWidget {
 
 class _MarketSkillTile extends StatelessWidget {
   const _MarketSkillTile({
+    super.key,
     required this.locale,
     required this.colorScheme,
     required this.skill,
@@ -684,61 +754,68 @@ class _SkillsListPane extends StatelessWidget {
                 ),
               ),
             )
-          : ListView.builder(
-              padding: const EdgeInsets.all(8),
-              itemCount: skills.length,
-              itemBuilder: (context, index) {
-                final skill = skills[index];
-                final selected = selectedSkillName == skill.name;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Material(
-                    color: selected
-                        ? colorScheme.primary.withValues(alpha: 0.12)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => onSelect(skill.name),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              skill.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: selected
-                                    ? colorScheme.primary
-                                    : colorScheme.onSurface,
-                              ),
+          : RepaintBoundary(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(8),
+                itemCount: skills.length,
+                // 添加缓存范围以提高滚动性能
+                cacheExtent: 300,
+                itemBuilder: (context, index) {
+                  final skill = skills[index];
+                  final selected = selectedSkillName == skill.name;
+                  return RepaintBoundary(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Material(
+                        key: ValueKey(skill.name),
+                        color: selected
+                            ? colorScheme.primary.withValues(alpha: 0.12)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () => onSelect(skill.name),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              skill.description,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colorScheme.onSurface.withValues(
-                                  alpha: 0.55,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  skill.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: selected
+                                        ? colorScheme.primary
+                                        : colorScheme.onSurface,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  skill.description,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurface.withValues(
+                                      alpha: 0.55,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
     );
   }

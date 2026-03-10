@@ -82,12 +82,18 @@ class SkillsNotifier extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    // 先加载 API Key，这个很快
     _marketApiKey = AppDatabase.instance.getSetting('skillsMarketApiKey') ?? '';
     notifyListeners();
-    await loadSkills();
-    if (_marketApiKey.isNotEmpty) {
-      await loadMarketSkills(reset: true);
-    }
+    
+    // 异步加载技能列表，不阻塞 UI
+    // 使用 microtask 确保在下一帧执行
+    Future.microtask(() async {
+      await loadSkills();
+      if (_marketApiKey.isNotEmpty) {
+        await loadMarketSkills(reset: true);
+      }
+    });
   }
 
   Future<void> loadSkills({bool preserveSelection = true}) async {
@@ -95,7 +101,10 @@ class SkillsNotifier extends ChangeNotifier {
     notifyListeners();
 
     final oldSelection = _selectedSkillName;
+    
+    // 异步加载技能列表
     final skills = await _service.listSkills();
+    
     _skills = skills;
     _loading = false;
     _shrinkDetailCache();
@@ -111,14 +120,16 @@ class SkillsNotifier extends ChangeNotifier {
     if (oldSelection != null && skills.any((s) => s.name == oldSelection)) {
       _selectedSkillName = oldSelection;
       notifyListeners();
-      await selectSkill(oldSelection);
+      // 异步加载详情，不阻塞UI
+      selectSkill(oldSelection);
       return;
     }
 
     if (skills.isNotEmpty) {
       _selectedSkillName = skills.first.name;
       notifyListeners();
-      await selectSkill(skills.first.name);
+      // 异步加载详情，不阻塞UI
+      selectSkill(skills.first.name);
       return;
     }
 
@@ -228,26 +239,44 @@ class SkillsNotifier extends ChangeNotifier {
           notifyListeners();
         },
       );
+      
+      // 确保进度显示为100%
+      _marketInstallProgress[skill.id] = 1.0;
+      notifyListeners();
+      
+      // 等待一小段时间让用户看到100%的进度
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // 重新加载技能列表
+      await loadSkills();
+      
+      // 检查技能是否已成功安装
+      final existing = _skills.where(
+        (item) => item.name.toLowerCase() == skill.name.toLowerCase(),
+      );
+      
+      if (existing.isNotEmpty) {
+        // 技能已存在，选中它并返回成功
+        await selectSkill(existing.first.name);
+        return null;
+      }
+      
+      // 技能不存在且安装失败
       if (!result.success) {
-        await loadSkills();
-        final existing = _skills.where(
-          (item) => item.name.toLowerCase() == skill.name.toLowerCase(),
-        );
-        if (existing.isNotEmpty) {
-          await selectSkill(existing.first.name);
-          return null;
-        }
         return result.error ?? '从市场安装失败';
       }
-
-      _marketInstallProgress[skill.id] = 1;
-      notifyListeners();
-      await loadSkills();
+      
+      // 安装成功，选中新技能
       if (result.name != null) {
         await selectSkill(result.name);
       }
       return null;
+    } catch (error) {
+      // 捕获异常并返回友好的错误消息
+      return '安装失败：${error.toString()}';
     } finally {
+      // 延迟移除安装状态，让用户看到完成的进度
+      await Future.delayed(const Duration(milliseconds: 500));
       _marketInstallingIds.remove(skill.id);
       _marketInstallProgress.remove(skill.id);
       notifyListeners();
@@ -286,15 +315,19 @@ class SkillsNotifier extends ChangeNotifier {
     final requestToken = ++_detailRequestToken;
     notifyListeners();
 
-    final contentFuture = _service.readSkillContent(skill);
-    final filesFuture = _service.listSkillFiles(skill);
-    final content = await contentFuture;
-    final files = await filesFuture;
+    // 并行加载内容和文件列表
+    final results = await Future.wait([
+      _service.readSkillContent(skill),
+      _service.listSkillFiles(skill),
+    ]);
 
     if (requestToken != _detailRequestToken ||
         _selectedSkillName != skill.name) {
       return;
     }
+
+    final content = results[0] as String?;
+    final files = results[1] as List<SkillFileInfo>;
 
     _selectedContent = content;
     _selectedFiles = files;

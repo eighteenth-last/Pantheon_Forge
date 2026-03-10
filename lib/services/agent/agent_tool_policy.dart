@@ -86,6 +86,17 @@ Map<String, dynamic> repairToolInput({
   required String userText,
   required List<UnifiedMessage> history,
 }) {
+  // 标准化 list_directory 的 path 参数
+  if (call.name == 'list_directory') {
+    final repaired = <String, dynamic>{...input};
+    final path = (repaired['path'] as String?)?.trim();
+    // 将空路径、null 或 '.' 统一标准化为 '.'
+    if (path == null || path.isEmpty || path == '.') {
+      repaired['path'] = '.';
+    }
+    return repaired;
+  }
+
   if (call.name == 'write_file') {
     final repaired = <String, dynamic>{...input};
 

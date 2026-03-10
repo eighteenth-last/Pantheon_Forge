@@ -14,8 +14,13 @@ class AppNavRail extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ui = ref.watch(uiProvider);
-    final locale = ref.watch(settingsProvider).settings.language;
+    // 优化：只监听需要的字段
+    final activeNavItem = ref.watch(uiProvider.select((ui) => ui.activeNavItem));
+    final leftSidebarOpen = ref.watch(uiProvider.select((ui) => ui.leftSidebarOpen));
+    final settingsPageOpen = ref.watch(uiProvider.select((ui) => ui.settingsPageOpen));
+    final skillsPageOpen = ref.watch(uiProvider.select((ui) => ui.skillsPageOpen));
+    final sshPageOpen = ref.watch(uiProvider.select((ui) => ui.sshPageOpen));
+    final locale = ref.watch(settingsProvider.select((s) => s.settings.language));
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
@@ -36,7 +41,14 @@ class AppNavRail extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: _NavButton(
                 icon: icon,
-                isActive: _isActive(ui, item),
+                isActive: _isActive(
+                  activeNavItem,
+                  leftSidebarOpen,
+                  settingsPageOpen,
+                  skillsPageOpen,
+                  sshPageOpen,
+                  item,
+                ),
                 onTap: () => ref.read(uiProvider.notifier).setNavItem(item),
                 colorScheme: colorScheme,
               ),
@@ -49,7 +61,7 @@ class AppNavRail extends ConsumerWidget {
             waitDuration: Duration.zero,
             child: _NavButton(
               icon: Icons.settings_outlined,
-              isActive: ui.settingsPageOpen,
+              isActive: settingsPageOpen,
               onTap: () => ref.read(uiProvider.notifier).openSettings(),
               colorScheme: colorScheme,
             ),
@@ -65,11 +77,18 @@ class AppNavRail extends ConsumerWidget {
     );
   }
 
-  bool _isActive(UIState ui, NavItem item) {
-    if (item == NavItem.skills) return ui.skillsPageOpen;
-    if (item == NavItem.ssh) return ui.sshPageOpen;
-    return ui.activeNavItem == item && ui.leftSidebarOpen &&
-        !ui.settingsPageOpen && !ui.skillsPageOpen && !ui.sshPageOpen;
+  bool _isActive(
+    NavItem activeNavItem,
+    bool leftSidebarOpen,
+    bool settingsPageOpen,
+    bool skillsPageOpen,
+    bool sshPageOpen,
+    NavItem item,
+  ) {
+    if (item == NavItem.skills) return skillsPageOpen;
+    if (item == NavItem.ssh) return sshPageOpen;
+    return activeNavItem == item && leftSidebarOpen &&
+        !settingsPageOpen && !skillsPageOpen && !sshPageOpen;
   }
 }
 

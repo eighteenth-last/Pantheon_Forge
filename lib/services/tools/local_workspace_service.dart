@@ -376,8 +376,15 @@ class LocalWorkspaceService {
       return '[OTHER] $name';
     }).toList()..sort();
 
+    // 返回更友好的格式，帮助大模型理解
+    final result = {
+      'path': relativePath ?? '.',
+      'entries': entries,
+      'summary': '找到 ${entries.where((e) => e.startsWith('[DIR]')).length} 个目录和 ${entries.where((e) => e.startsWith('[FILE]')).length} 个文件',
+    };
+
     return ToolExecutionResult(
-      content: jsonEncode({'path': relativePath ?? '.', 'entries': entries}),
+      content: jsonEncode(result),
     );
   }
 

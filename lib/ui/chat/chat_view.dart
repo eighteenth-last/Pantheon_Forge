@@ -38,6 +38,8 @@ class _ChatViewPageState extends ConsumerState<ChatViewPage> {
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
   bool _webSearchEnabled = false;
+  bool _isAutoScrolling = false;
+  int _lastMessageCount = 0;
 
   @override
   void dispose() {
@@ -53,14 +55,21 @@ class _ChatViewPageState extends ConsumerState<ChatViewPage> {
     });
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool force = false}) {
+    if (_isAutoScrolling && !force) return;
+    
+    _isAutoScrolling = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
-        );
+        ).then((_) {
+          _isAutoScrolling = false;
+        });
+      } else {
+        _isAutoScrolling = false;
       }
     });
   }
@@ -74,7 +83,7 @@ class _ChatViewPageState extends ConsumerState<ChatViewPage> {
     if (chat.isStreaming) return;
 
     _controller.clear();
-    _scrollToBottom();
+    _scrollToBottom(force: true);
 
     _chatService.sendMessage(
       text: text,
@@ -88,18 +97,35 @@ class _ChatViewPageState extends ConsumerState<ChatViewPage> {
 
   @override
   Widget build(BuildContext context) {
-    final chat = ref.watch(chatProvider);
-    final settings = ref.watch(settingsProvider).settings;
-    final locale = settings.language;
+    // 优化：只监听需要的字段，避免不必要的重建
+    final isStreaming = ref.watch(chatProvider.select((chat) => chat.isStreaming));
+    final activeSessionId = ref.watch(chatProvider.select((chat) => chat.activeSessionId));
+    final locale = ref.watch(settingsProvider.select((s) => s.settings.language));
+    
     final colorScheme = Theme.of(context).colorScheme;
-    final activeSession = chat.activeSession;
-    final sessionId = chat.activeSessionId;
-    final messages = sessionId != null
-        ? chat.getMessages(sessionId)
+    final chatNotifier = ref.read(chatProvider);
+    final activeSession = activeSessionId != null 
+        ? chatNotifier.getSessionById(activeSessionId)
+        : null;
+    final messages = activeSessionId != null
+        ? chatNotifier.getMessages(activeSessionId)
         : <UnifiedMessage>[];
 
-    // Auto-scroll when streaming
-    if (chat.isStreaming) _scrollToBottom();
+    // 智能滚动：仅在消息数量变化或流式传输时滚动
+    final currentMessageCount = messages.length;
+    if (currentMessageCount != _lastMessageCount) {
+      _lastMessageCount = currentMessageCount;
+      _scrollToBottom();
+    } else if (isStreaming && !_isAutoScrolling) {
+      // 流式传输时，仅当用户在底部附近时才自动滚动
+      if (_scrollController.hasClients) {
+        final position = _scrollController.position;
+        final isNearBottom = position.maxScrollExtent - position.pixels < 100;
+        if (isNearBottom) {
+          _scrollToBottom();
+        }
+      }
+    }
 
     return Column(
       children: [
@@ -164,17 +190,23 @@ class _ChatViewPageState extends ConsumerState<ChatViewPage> {
                     ],
                   ),
                 )
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) => _MessageBubble(
-                    message: messages[index],
-                    locale: locale,
-                    colorScheme: colorScheme,
+              : RepaintBoundary(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    itemCount: messages.length,
+                    // 添加缓存范围以提高滚动性能
+                    cacheExtent: 500,
+                    itemBuilder: (context, index) => RepaintBoundary(
+                      child: _MessageBubble(
+                        message: messages[index],
+                        locale: locale,
+                        colorScheme: colorScheme,
+                      ),
+                    ),
                   ),
                 ),
         ),
@@ -183,13 +215,13 @@ class _ChatViewPageState extends ConsumerState<ChatViewPage> {
         _InputArea(
           controller: _controller,
           focusNode: _focusNode,
-          isStreaming: chat.isStreaming,
+          isStreaming: isStreaming,
           locale: locale,
           colorScheme: colorScheme,
           onSend: _sendMessage,
           onStop: () => _chatService.stopStreaming(),
-          providerName: ref.watch(providerProvider).activeProvider?.name,
-          modelName: ref.watch(providerProvider).activeModel?.name,
+          providerName: ref.read(providerProvider).activeProvider?.name,
+          modelName: ref.read(providerProvider).activeModel?.name,
           webSearchEnabled: _webSearchEnabled,
           onToggleWebSearch: _toggleWebSearch,
         ),

@@ -418,7 +418,10 @@ class SkillsService {
         repo: repoRef.repo,
         sourcePath: skill.sourcePath,
         tempDir: tempDir.path,
-        onProgress: onProgress,
+        onProgress: (downloadProgress) {
+          // 下载占80%的进度
+          onProgress?.call(downloadProgress * 0.8);
+        },
       );
       if (files.isEmpty) {
         return const SkillInstallResult(
@@ -432,11 +435,18 @@ class SkillsService {
           error: '下载失败：缺少 SKILL.md',
         );
       }
-      onProgress?.call(1);
+      
+      // 下载完成，开始安装（80%-100%）
+      onProgress?.call(0.8);
 
       final installResult = await addSkillFromFolder(tempDir.path);
+      
+      // 安装完成
+      onProgress?.call(1.0);
+      
       if (!installResult.success &&
           (installResult.error?.contains('已存在') ?? false)) {
+        // 技能已存在，视为成功
         return SkillInstallResult(success: true, name: skill.name);
       }
       return installResult;
@@ -448,7 +458,7 @@ class SkillsService {
     } catch (error) {
       return SkillInstallResult(
         success: false,
-        error: '下载失败：${error.toString()}',
+        error: '安装失败：${error.toString()}',
       );
     } finally {
       try {

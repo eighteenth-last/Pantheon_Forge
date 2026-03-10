@@ -8,11 +8,14 @@ class ChatHomePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final locale = ref.watch(settingsProvider).settings.language;
+    // 优化：只监听需要的字段
+    final locale = ref.watch(settingsProvider.select((s) => s.settings.language));
     final colorScheme = Theme.of(context).colorScheme;
-    final provNotifier = ref.watch(providerProvider);
+    final providers = ref.watch(providerProvider.select((p) => p.providers));
+    final activeProvider = ref.watch(providerProvider.select((p) => p.activeProvider));
+    
     // Check if there's at least one enabled provider with models
-    final hasProvider = provNotifier.providers.any(
+    final hasProvider = providers.any(
       (p) => p.enabled && p.models.isNotEmpty,
     );
 
@@ -59,8 +62,8 @@ class ChatHomePage extends ConsumerWidget {
             FilledButton.icon(
               onPressed: () {
                 // Auto-activate first available provider if none is active
-                if (provNotifier.activeProvider == null) {
-                  final firstProvider = provNotifier.providers.firstWhere(
+                if (activeProvider == null) {
+                  final firstProvider = providers.firstWhere(
                     (p) => p.enabled && p.models.isNotEmpty,
                   );
                   ref.read(providerProvider.notifier).setActive(
